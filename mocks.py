@@ -56,7 +56,7 @@ class MockCamera:
     _shifts = _np.zeros((3,), dtype=_np.float64)
 
     grid = _np.array(_np.meshgrid(_np.arange(max_x), _np.arange(max_y), indexing="ij"))
-
+    f = True
     def __init__(self, nmpp_x, nmpp_y, nmpp_z, sigma, noise_level=3, drift_amplitude=3):
         """Init Mock camera.
 
@@ -88,6 +88,10 @@ class MockCamera:
     def get_image(self):
         """Return a faked image."""
         # Some random noise
+        # if not self.f:
+        #     if _np.random.random_sample() > 0.9:  # falla una de cada 10
+        #         raise ValueError("error en camara")
+        # self.f = False
         rv = _np.random.poisson(
             2.5,
             (
