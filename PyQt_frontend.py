@@ -137,7 +137,7 @@ class Frontend(QFrame):
             _CAMERA_Z_NMPPX,
             _CAMERA_X_NMPPX * 10,
             3,
-            40,
+            10,
         )
         # Mock piezo motor, replace with your own
         self._piezo = MockPiezo(self._camera)
@@ -338,6 +338,10 @@ class Frontend(QFrame):
             # update Graphs
             z_data = self._z_data[: self._counter + 1]
             self.zCurve.setData(t_data, z_data)
+            hist, bin_edges = np.histogram(z_data, bins=30)
+            self.zHistogram.setOpts(x=np.mean((bin_edges[:-1], bin_edges[1:],), axis=0),
+                                    height=hist,
+                                    width=bin_edges[1]-bin_edges[0])
 
         if self._xy_tracking_enabled and xy_shifts.shape[0]:
             self._x_data[self._counter] = xy_shifts[:, 0]
@@ -421,7 +425,7 @@ class Frontend(QFrame):
         self.paramWidget.setMinimumHeight(200)
         self.paramWidget.setFixedWidth(270)
 
-        # create xy ROI button
+        # ROI buttons
         self.xyROIButton = QPushButton("xy ROI")
         self.xyROIButton.clicked.connect(self._add_xy_ROI)
         self.zROIButton = QPushButton("z ROI")
@@ -431,6 +435,7 @@ class Frontend(QFrame):
         self.delete_roiButton.clicked.connect(self._remove_xy_ROI)
         self.delete_roiButton.setEnabled(False)
 
+        # Tracking control
         trackgb = QGroupBox("Tracking")
         trackLayout = QHBoxLayout()
         trackgb.setLayout(trackLayout)
@@ -450,6 +455,7 @@ class Frontend(QFrame):
         self.trackZBox.stateChanged.connect(self._send_z_rois)
         self.trackXYBox.stateChanged.connect(self._send_xy_rois)
 
+        # Correction controls
         lockgb = QGroupBox("Lock")
         lockLayout = QHBoxLayout()
         lockgb.setLayout(lockLayout)
@@ -476,13 +482,11 @@ class Frontend(QFrame):
         subgrid.addWidget(self.xyROIButton, 0, 0)
         subgrid.addWidget(self.zROIButton, 1, 0)
         subgrid.addWidget(self.delete_roiButton, 2, 0)
-        # subgrid.addWidget(self.setROIsButton, 3, 0)
+
         subgrid.addWidget(trackgb, 4, 0)
         subgrid.addWidget(lockgb, 5, 0)
         subgrid.addWidget(self.exportDataButton, 6, 0)
         # subgrid.addWidget(self.clearDataButton, 7, 0)
-        # subgrid.addWidget(self.trackingBeadsBox, 1, 1)
-        # subgrid.addWidget(self.feedbackLoopBox, 2, 1)
 
         # stats widget
         self.statWidget = QGroupBox("Live statistics")
@@ -545,14 +549,14 @@ class Frontend(QFrame):
         )
 
         # z drift graph (1D histogram)
-        x = np.arange(-30, 30)
+        x = np.arange(-20, 20)
         y = np.zeros(len(x))
 
-        self.zHist = pg.BarGraphItem(x=x, height=y, width=0.6, brush="#3BC14A")
-        self.zWin = self.xyPoint.addPlot()
-        self.zWin.addItem(self.zHist)
+        self.zHistogram = pg.BarGraphItem(x=x, height=y, width=0.5, brush="#008a19")
+        self.zPlot = self.xyPoint.addPlot()
+        self.zPlot.addItem(self.zHistogram)
 
-        # Lay everithing in place
+        # Lay everything in place
         grid.addWidget(imageWidget, 0, 0)
         grid.addWidget(self.paramWidget, 0, 1)
         grid.addWidget(self.statWidget, 0, 2)
