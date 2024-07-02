@@ -15,6 +15,7 @@ Use:
 
 """
 import numpy as np
+import time as _time
 import warnings
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject, Qt
 from PyQt5.QtWidgets import (
@@ -150,13 +151,18 @@ class Frontend(QFrame):
         self._est = Stabilizer(
             self._camera, self._piezo, _CAMERA_X_NMPPX, _CAMERA_Z_NMPPX, self._cbojt.cb
         )
+        self._t0 = _time.time()
         self._est.start()
 
     def reset_data_buffers(self):
-        """Reset data buffers unrelated to localization."""
+        """Reset data buffers unrelated to localization.
+
+        Also resets base timer
+        """
         self._I_data = np.full((_MAX_POINTS,), np.nan)
         self._t_data = np.full((_MAX_POINTS,), np.nan)
         self._counter = 0
+        self._t0 = _time.time()
 
     def reset_xy_data_buffers(self, roi_len: int):
         """Reset data buffers related to XY localization."""
@@ -322,12 +328,25 @@ class Frontend(QFrame):
     @pyqtSlot(float, np.ndarray, float, np.ndarray)
     def get_data(self, t: float, img: np.ndarray, z: float, xy_shifts: np.ndarray):
         """Receive data from the stabilizer and graph it."""
+        # Meter esto al principio. Ver si grabar
+        if self._counter >= _MAX_POINTS:  # roll o grabar
+            self._t_data[0:-1] = self._t_data[1:]
+            self._I_data[0:-1] = self._I_data[1:]
+            if self._z_tracking_enabled:
+                self._z_data[0:-1] = self._z_data[1:]
+            if self._xy_tracking_enabled and xy_shifts.shape[0]:
+                self._x_data[0:-1] = self._x_data[1:]
+                self._y_data[0:-1] = self._y_data[1:]
+                # x_mean[0:-1] = x_mean[1:]
+                # y_mean[0:-1] = y_mean[1:]
+            self._counter -= 1
+
         # manage image data
         self.img.setImage(img, autoLevels=self.lastimage is None)
         self.lastimage = img
         self._I_data[self._counter] = np.average(img)
         self._t_data[self._counter] = t
-        t_data = self._t_data[: self._counter + 1]
+        t_data = self._t_data[: self._counter + 1] - self._t0
         self.avgIntCurve.setData(t_data, self._I_data[: self._counter + 1])
 
         # manage tracking data
@@ -338,10 +357,13 @@ class Frontend(QFrame):
             # update Graphs
             z_data = self._z_data[: self._counter + 1]
             self.zCurve.setData(t_data, z_data)
-            hist, bin_edges = np.histogram(z_data, bins=30)
-            self.zHistogram.setOpts(x=np.mean((bin_edges[:-1], bin_edges[1:],), axis=0),
-                                    height=hist,
-                                    width=bin_edges[1]-bin_edges[0])
+            try:  # It is possible to have all NANs data
+                hist, bin_edges = np.histogram(z_data, bins=30)
+                self.zHistogram.setOpts(x=np.mean((bin_edges[:-1], bin_edges[1:],), axis=0),
+                                        height=hist,
+                                        width=bin_edges[1]-bin_edges[0])
+            except Exception:
+                ...
 
         if self._xy_tracking_enabled and xy_shifts.shape[0]:
             self._x_data[self._counter] = xy_shifts[:, 0]
@@ -370,19 +392,6 @@ class Frontend(QFrame):
             self.ymeanCurve.setData(t_data, y_mean)
             self.xyDataItem.setData(x_mean, y_mean)
         self._counter += 1
-
-        # Meter esto al principio. Ver si grabar
-        if self._counter >= _MAX_POINTS:  # roll o grabar
-            self._t_data[0:-1] = self._t_data[1:]
-            self._I_data[0:-1] = self._I_data[1:]
-            if self._z_tracking_enabled:
-                self._z_data[0:-1] = self._z_data[1:]
-            if self._xy_tracking_enabled and xy_shifts.shape[0]:
-                self._x_data[0:-1] = self._x_data[1:]
-                self._y_data[0:-1] = self._y_data[1:]
-                x_mean[0:-1] = x_mean[1:]
-                y_mean[0:-1] = y_mean[1:]
-            self._counter -= 1
 
     def setup_gui(self):
         """Create and lay out all GUI objects."""
