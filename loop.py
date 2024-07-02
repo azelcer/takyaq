@@ -73,7 +73,6 @@ def gaussian_fit(data: _np.ndarray, x_max: float, y_max: float,
         )
         v_min = data.min()
         v_max = data.max()
-        # x_max, y_max = _np.unravel_index(_np.argmax(data), data.shape)
         args = (v_max - v_min, x_max, y_max, sigma, v_min)
         popt, pcov = _sp.optimize.curve_fit(gaussian2D, xdata, data.ravel(), p0=args)
     except Exception as e:
@@ -137,7 +136,6 @@ class StabilizerThread(_th.Thread):
             # TODO: protect against negative numbers max(0, _.min_x), min(_.max_x, self.img.shape[1])
             [[[_.min_x, _.max_x], [_.min_y, _.max_y]] for _ in rois], dtype=_np.uint16
         )
-        # TODO:  Hacer que no espere si no est'a corriendo
         return True
 
     def set_z_roi(self, roi: ROI) -> bool:
@@ -157,12 +155,11 @@ class StabilizerThread(_th.Thread):
         return True
 
     def enable_xy_tracking(self) -> bool:
-        """Enables tracking of XY fiduciaries."""
+        """Enable tracking of XY fiduciaries."""
         if self._xy_rois is None:
             _lgr.warning("Trying to enable xy tracking without ROIs")
             return False
-        if not self._z_tracking:
-            self._reset_t0()
+
         self._initialize_last_params()
         self._xy_track_event.clear()
         self._xy_track_event.wait()
@@ -170,7 +167,7 @@ class StabilizerThread(_th.Thread):
         return True
 
     def disable_xy_tracking(self) -> bool:
-        """Disables tracking of XY fiduciaries."""
+        """Disable tracking of XY fiduciaries."""
         if self._xy_stabilization:
             _lgr.warning("Trying to disable xy tracking while feedback active")
             return False
@@ -178,11 +175,13 @@ class StabilizerThread(_th.Thread):
         return True
 
     def set_xy_tracking(self, enabled: bool) -> bool:
+        """Set XY tracking ON or OFF."""
         if enabled:
             return self.enable_xy_tracking()
         return self.disable_xy_tracking()
 
     def enable_xy_stabilization(self) -> bool:
+        """Enable stabilization on XY plane."""
         if not self._xy_tracking:
             _lgr.warning("Trying to enable xy stabilization without tracking")
             return False
@@ -190,30 +189,29 @@ class StabilizerThread(_th.Thread):
         return True
 
     def disable_xy_stabilization(self) -> bool:
+        """Disable stabilization on XY plane."""
         if not self._xy_stabilization:
             _lgr.warning("Trying to disable xy feedback but is not active")
         self._xy_stabilization = False
         return True
 
     def set_xy_stabilization(self, enabled: bool) -> bool:
+        """Set XY stabilization ON or OFF."""
         if enabled:
             return self.enable_xy_stabilization()
         return self.disable_xy_stabilization()
 
     def enable_z_tracking(self) -> bool:
+        """Enable tracking of Z position."""
         if self._z_roi is None:
             _lgr.warning("Trying to enable z tracking without ROI")
             return False
-        if not self._xy_tracking:
-            self._reset_t0()
+
         self._z_tracking = True
         return True
 
-    def _reset_t0(self):
-        """Resetea el punto 0 del tiempo. Podría ser un parámetro externo."""
-        self._t0 = _time.time()
-
     def disable_z_tracking(self) -> bool:
+        """Disable tracking of Z position."""
         if self._z_stabilization:
             _lgr.warning("Trying to disable z tracking while feedback active")
             return False
@@ -221,11 +219,13 @@ class StabilizerThread(_th.Thread):
         return True
 
     def set_z_tracking(self, enabled: bool) -> bool:
+        """Set tracking of Z position ON or OFF."""
         if enabled:
             return self.enable_z_tracking()
         return self.disable_z_tracking()
 
     def enable_z_stabilization(self) -> bool:
+        """Enable stabilization of Z position."""
         if not self._z_tracking:
             _lgr.warning("Trying to enable z stabilization without tracking")
             return False
@@ -233,18 +233,20 @@ class StabilizerThread(_th.Thread):
         return True
 
     def disable_z_stabilization(self) -> bool:
+        """Disable stabilization of Z position."""
         if not self._z_stabilization:
             _lgr.warning("Trying to disable z feedback but is not active")
         self._z_stabilization = False
         return True
 
     def set_z_stabilization(self, enabled: bool) -> bool:
+        """Set stabilization of Z position ON or OFF."""
         if enabled:
             return self.enable_z_stabilization()
         return self.disable_z_stabilization()
 
     def start_loop(self):
-        """Inicia el loop de estabilización."""
+        """Start tracking and stabilization loop."""
         if not self._stop_event.is_set():
             _lgr.warning("Trying to start already running loop")
             return
@@ -253,17 +255,17 @@ class StabilizerThread(_th.Thread):
         self.start()
 
     def stop_loop(self):
-        """Stops the loop.
+        """Stop tracking and stabilization loop and release resources.
 
-        Must be called from another thread.
+        Must be called from another thread to avoid deadlocks.
         """
         self._stop_event.set()
         self.join()
-        self._executor.shutdown()  ## Ver esto porque no se puede reiniciar.
+        self._executor.shutdown()
         _lgr.debug("Loop ended")
 
     def _locate_xy_centers(self, image: _np.ndarray) -> _np.ndarray:
-        """Locate centers in ROIS."""
+        """Locate centers in XY ROIS."""
         trimmeds = [image[roi[0, 0]:roi[0, 1], roi[1, 0]: roi[1, 1]]
                     for roi in self._xy_rois]
         x = self._last_params['x']
@@ -272,13 +274,16 @@ class StabilizerThread(_th.Thread):
         rv = _np.array(tuple(self._executor.map(gaussian_fit, trimmeds, x, y, s)))
         rv = rv[:, :2] + self._xy_rois[:, 0, :]
         rv *= self._nmpp_xy
-        # rv += self._xy_rois[:, 0, :] * self._nmpp_xy
         return rv
 
     def _initialize_last_params(self):
-        # en pixeles
-        # guardas (que exista imagen, etc)
+        """Initialize fitting parameters.
 
+        All values are *in pixels* inside each ROI.
+
+        TODO: Protect against errors(que exista imagen, que los ROIS no se escapen de
+                                     la imagen)
+        """
         trimmeds = [self._last_image[roi[0, 0]:roi[0, 1], roi[1, 0]: roi[1, 1]]
                     for roi in self._xy_rois]
         pos_max = [_np.unravel_index(_np.argmax(data), data.shape) for data in
@@ -296,7 +301,10 @@ class StabilizerThread(_th.Thread):
             _lgr.error("Trying to locate z position without a ROI")
             return _np.nan
         roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
-        # TODO: Ver si rotar
+        # TODO: Add rotation angle
+        # ang is measured counterclockwise from the X axis. We rotate *clockwise*
+        # rv = _np.sum(_np.array(_sp.ndimage.center_of_mass(roi)) *
+        #       _np.array((_np.cos(ang), _np.sin(ang)))) * self._nmpp_z
         rv = _sp.ndimage.center_of_mass(roi)[0] * self._nmpp_z
         return rv
 
@@ -314,14 +322,13 @@ class StabilizerThread(_th.Thread):
         # self._out_q.put_nowait(rv)
 
     def run(self):
-        """Main stabilization loop."""
-        DELAY = .10
+        """Run main stabilization loop."""
+        # TODO: let delay be configurable
+        DELAY = .05
         initial_xy_positions = None
         initial_z_position = None
-        self._t0 = _time.time()
         while not self._stop_event.is_set():
             lt = _time.monotonic()
-            #  Tal vez NANs
             x_shift = 0.0
             y_shift = 0.0
             z_shift = 0.0
@@ -334,7 +341,7 @@ class StabilizerThread(_th.Thread):
                 _lgr.error("Could not acquire image: %s (%s)", type(e), e)
                 image = _np.diag(_np.full(max(*self._last_image.shape), 255))
                 t = _time.time()
-                self._report(t - self._t0, image,
+                self._report(t, image,
                              _np.full_like(initial_xy_positions, _np.nan), _np.nan)
                 _time.sleep(DELAY)
                 continue
@@ -342,7 +349,7 @@ class StabilizerThread(_th.Thread):
                 _lgr.info("Setting xy initial positions")
                 initial_xy_positions = self._locate_xy_centers(image)
                 self._xy_track_event.set()
-                self._xy_tracking = True                
+                self._xy_tracking = True       
             if not self._z_roi_OK_event.is_set():
                 _lgr.info("Setting z initial positions")
                 initial_z_position = self._locate_z_center(image)
@@ -354,7 +361,7 @@ class StabilizerThread(_th.Thread):
             if self._xy_tracking:
                 xy_positions = self._locate_xy_centers(image)
                 xy_shifts = xy_positions - initial_xy_positions
-            self._report(t - self._t0, image, xy_shifts, z_shift)
+            self._report(t, image, xy_shifts, z_shift)
             if self._z_stabilization or self._xy_stabilization:
                 if self._xy_stabilization:
                     x_shift, y_shift = _np.nanmean(xy_shifts, axis=0)
@@ -372,7 +379,7 @@ class StabilizerThread(_th.Thread):
                 self._piezo.move(x_shift, y_shift, z_shift)
             nt = _time.monotonic()
             delay = DELAY - (nt - lt)
-            if delay < 0.001:
+            if delay < 0.001:  # be nice to other threads
                 delay = 0.001
             _time.sleep(delay)
         _lgr.debug("Ending loop.")
