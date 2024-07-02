@@ -91,6 +91,7 @@ class StabilizerThread(_th.Thread):
     _z_stabilization: bool = False
     _xy_rois = None  # mins, maxs
     _z_roi = None  # min/max x, min/max y
+    _last_image: _np.ndarray = _np.empty((50, 50))
 
     def __init__(
         self, out_q: _sq, camera, piezo, nmpp_xy: float, nmpp_z: float,
@@ -325,9 +326,18 @@ class StabilizerThread(_th.Thread):
             y_shift = 0.0
             z_shift = 0.0
             xy_shifts = None
-            image = self._camera.get_image()
-            self._last_image = image
-            t = _time.time()
+            try:
+                image = self._camera.get_image()
+                t = _time.time()
+                self._last_image = image
+            except Exception as e:
+                _lgr.error("Could not acquire image: %s (%s)", type(e), e)
+                image = _np.diag(_np.full(max(*self._last_image.shape), 255))
+                t = _time.time()
+                self._report(t - self._t0, image,
+                             _np.full_like(initial_xy_positions, _np.nan), _np.nan)
+                _time.sleep(DELAY)
+                continue
             if not self._xy_track_event.is_set():
                 _lgr.info("Setting xy initial positions")
                 initial_xy_positions = self._locate_xy_centers(image)
