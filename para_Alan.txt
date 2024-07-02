@@ -1,0 +1,29 @@
+Instalar extra:
+ - pythonnet
+ - instrumental-lib para la UC480 (supongo que esto está hecho: https://instrumental-lib.readthedocs.io/en/stable/uc480-cameras.html, que incluye pip install pywin32 nicelib)
+
+copiar: drivers/bpc_piezo.py de pyflux
+
+funciones:
+
+  Del piezo:
+    def get_positions(self):
+        """Retrieve the position as a list of floating-point numbers [μm]"""
+
+    def set_positions(self, positions):
+        """Set the position [μm]"""
+
+    (hacer Wrapper)
+
+  De la cámara:
+          raw_image = camera.latest_frame()
+          self.image = raw_image[:, :, 0] # take only R channel
+       self.camera.stop_live_video()
+
+        self.camera.start_live_video()
+        self.camera._set_exposure(Q_('50 ms')) # ms
+        self.camera.master_gain = 4
+        self.camera.auto_blacklevel = True
+        self.camera.gain_boost = True
+
+
