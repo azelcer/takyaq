@@ -19,6 +19,8 @@ from typing import Union
 from classes import ROI, PointInfo
 
 from mocks import MockCamera, MockPiezo
+from responders import PIReactor
+
 
 _lgn.basicConfig()
 _lgr = _lgn.getLogger(__name__)
@@ -333,6 +335,7 @@ class StabilizerThread(_th.Thread):
         DELAY = .05
         initial_xy_positions = None
         initial_z_position = None
+        rsp = PIReactor()
         while not self._stop_event.is_set():
             lt = _time.monotonic()
             x_shift = 0.0
@@ -369,20 +372,21 @@ class StabilizerThread(_th.Thread):
                 xy_shifts = xy_positions - initial_xy_positions
             self._report(t, image, xy_shifts, z_shift)
             if self._z_stabilization or self._xy_stabilization:
-                if self._xy_stabilization:
-                    x_shift, y_shift = _np.nanmean(xy_shifts, axis=0)
-                    if x_shift is _np.nan:
-                        _lgr.warning("x shift is NAN")
-                        x_shift = 0.0
-                    if y_shift is _np.nan:
-                        _lgr.warning("y shift is NAN")
-                        y_shift = 0.0
+                # if self._xy_stabilization:
+                #     x_shift, y_shift = _np.nanmean(xy_shifts, axis=0)
+                #     if x_shift is _np.nan:
+                #         _lgr.warning("x shift is NAN")
+                #         x_shift = 0.0
+                #     if y_shift is _np.nan:
+                #         _lgr.warning("y shift is NAN")
+                #         y_shift = 0.0
                 if not self._z_stabilization:
                     z_shift = 0.0
                 if z_shift is _np.nan:
                     _lgr.warning("z shift is NAN")
                     z_shift = 0.0
-                self._piezo.move(x_shift, y_shift, z_shift)
+                x_resp, y_rsp, z_resp = rsp.response(xy_shifts, z_shift)
+                self._piezo.move(x_resp, y_rsp, z_resp)
             nt = _time.monotonic()
             delay = DELAY - (nt - lt)
             if delay < 0.001:  # be nice to other threads

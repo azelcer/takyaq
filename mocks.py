@@ -167,10 +167,9 @@ class MockPiezo:
     def move(self, *args):
         t = _time.monotonic()
         # print("loop took:", t-self.lastime, "shifts=", args)
-        facts = [1.5 if x > 3 else 1 for x in args]
         if self._camera:
             self._camera.shift(
-                -args[0] * facts[0], -args[1] * facts[1], args[2] * facts[2]
-            )  # *[-_ for _ in args])
+                args[0], args[1], args[2]
+            )
         self.lastime = t
         return
