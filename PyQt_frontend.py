@@ -240,7 +240,7 @@ class Frontend(QFrame):
             _lgr.warning("A Z ROI already exists")
             return
         w, h = self.lastimage.shape[0:2]
-        ROIpos = (w / 2 - _XY_ROI_SIZE / 2, h / 2 - _XY_ROI_SIZE / 2)
+        ROIpos = (w / 2 - _Z_ROI_SIZE / 2, h / 2 - _Z_ROI_SIZE / 2)
         ROIsize = (_Z_ROI_SIZE, _Z_ROI_SIZE)
         roi = pg.ROI(ROIpos, ROIsize, pen={"color": "red", "width": 2}, rotatable=False)
         roi.addScaleHandle((1, 0), (0, 1), lockAspect=True)
