@@ -11,6 +11,7 @@ import scipy as _sp
 import threading as _th
 import logging as _lgn
 import time as _time
+import os as _os
 from typing import Callable as _Callable
 from queue import SimpleQueue as _sq
 from concurrent.futures import ProcessPoolExecutor as _PPE
@@ -251,6 +252,11 @@ class StabilizerThread(_th.Thread):
             _lgr.warning("Trying to start already running loop")
             return
         self._executor = _PPE()
+        # prime pool for responsiveness (a _must_ on windows).
+        nproc = _os.cpu_count()
+        params = [[_np.eye(3)] * nproc, [1.] * nproc, [1.] * nproc, [1.] * nproc]
+        _ = tuple(self._executor.map(gaussian_fit, *params))
+
         self._stop_event.clear()
         self.start()
 
