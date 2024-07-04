@@ -8,11 +8,10 @@ localization event
 @author: azelcer
 """
 
-
-print("************** meter  tiempo para integrar *************")
 import numpy as _np
 import logging as _lgn
 from typing import Optional as _Optional
+
 _lgn.basicConfig()
 _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
@@ -118,6 +117,7 @@ class PIDReactor:
     _N_VALS = 5
     next_val =  0
     _last_deriv = _np.full((_N_VALS, 3,), _np.nan)
+    _invert = _np.array([-1, -1, 1])
     lasttime = 0.
 
     def reset_xy(self, n_xy_rois: int):
@@ -161,7 +161,7 @@ class PIDReactor:
         rv = error * self._Kp + self._Ki * self._cum + self._Kd * self._deriv
         self._last_e = error
         self.lasttime = t
-        return -rv
+        return rv * self._invert
 
 class PIDReactor2:
     """Modified PID Reactor. Proportional, short-time Integral, Derivative."""

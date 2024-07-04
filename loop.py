@@ -17,9 +17,6 @@ from concurrent.futures import ProcessPoolExecutor as _PPE
 from typing import Union
 from classes import ROI, PointInfo
 
-from mocks import MockCamera, MockPiezo
-from responders import BaseReactor, PIReactor, PIDReactor
-
 
 _lgn.basicConfig()
 _lgr = _lgn.getLogger(__name__)
@@ -95,7 +92,7 @@ class StabilizerThread(_th.Thread):
     _last_image: _np.ndarray = _np.empty((50, 50))
 
     def __init__(
-        self, camera, piezo, nmpp_xy: float, nmpp_z: float,
+        self, camera, piezo, nmpp_xy: float, nmpp_z: float, corrector,
         callback: _Callable[[PointInfo], None] = None, *args, **kwargs
     ):
         """Init stabilization thread.
@@ -122,6 +119,7 @@ class StabilizerThread(_th.Thread):
         self._xy_track_event.set()
         self._z_roi_OK_event = _th.Event()
         self._z_roi_OK_event.set()
+        self._rsp = corrector
         self._cb = callback
 
     def set_xy_rois(self, rois: list[ROI]) -> bool:
@@ -185,6 +183,7 @@ class StabilizerThread(_th.Thread):
         if not self._xy_tracking:
             _lgr.warning("Trying to enable xy stabilization without tracking")
             return False
+        self._rsp.reset_xy(len(self._xy_rois))
         self._xy_stabilization = True
         return True
 
@@ -229,6 +228,7 @@ class StabilizerThread(_th.Thread):
         if not self._z_tracking:
             _lgr.warning("Trying to enable z stabilization without tracking")
             return False
+        self._rsp.reset_z()
         self._z_stabilization = True
         return True
 
@@ -331,7 +331,6 @@ class StabilizerThread(_th.Thread):
         DELAY = .1
         initial_xy_positions = None
         initial_z_position = None
-        rsp = PIReactor()
         while not self._stop_event.is_set():
             lt = _time.monotonic()
             z_shift = 0.0
@@ -352,7 +351,7 @@ class StabilizerThread(_th.Thread):
                 _lgr.info("Setting xy initial positions")
                 initial_xy_positions = self._locate_xy_centers(image)
                 self._xy_track_event.set()
-                self._xy_tracking = True       
+                self._xy_tracking = True
             if not self._z_roi_OK_event.is_set():
                 _lgr.info("Setting z initial positions")
                 initial_z_position = self._locate_z_center(image)
@@ -366,12 +365,18 @@ class StabilizerThread(_th.Thread):
                 xy_shifts = xy_positions - initial_xy_positions
             self._report(t, image, xy_shifts, z_shift)
             if self._z_stabilization or self._xy_stabilization:
-                if not self._z_stabilization:
-                    z_shift = 0.0
                 if z_shift is _np.nan:
                     _lgr.warning("z shift is NAN")
                     z_shift = 0.0
-                x_resp, y_resp, z_resp = rsp.response(t, xy_shifts, z_shift)
+                try:
+                    x_resp, y_resp, z_resp = self._rsp.response(t, xy_shifts, z_shift)
+                except Exception as e:
+                    _lgr.warning("Error getting correction: %s, %s", e, type(e))
+                    x_resp = y_resp = z_resp = 0.0
+                if not self._z_stabilization:
+                    z_resp = 0.0
+                if not self._xy_stabilization:
+                    x_resp = y_resp = 0.0
                 self._piezo.move(x_resp, y_resp, z_resp)
             nt = _time.monotonic()
             delay = DELAY - (nt - lt)

@@ -34,6 +34,7 @@ import pyqtgraph as pg
 import logging as _lgn
 
 from estabilizador import Stabilizer, PointInfo, ROI
+from responders import BaseReactor, PIReactor, PIDReactor
 from mocks import MockCamera, MockPiezo
 
 _lgr = _lgn.getLogger(__name__)
@@ -137,7 +138,7 @@ class Frontend(QFrame):
             _CAMERA_X_NMPPX,
             _CAMERA_Y_NMPPX,
             _CAMERA_Z_NMPPX,
-            _CAMERA_X_NMPPX * 3,
+            _CAMERA_X_NMPPX * 7,
             2,
             10,
         )
@@ -150,7 +151,8 @@ class Frontend(QFrame):
         self.reset_xy_data_buffers(len(self._roilist))
         self.reset_z_data_buffers()
         self._est = Stabilizer(
-            self._camera, self._piezo, _CAMERA_X_NMPPX, _CAMERA_Z_NMPPX, self._cbojt.cb
+            self._camera, self._piezo, _CAMERA_X_NMPPX, _CAMERA_Z_NMPPX, BaseReactor(),
+            self._cbojt.cb
         )
         self._t0 = _time.time()
         self._est.start()
