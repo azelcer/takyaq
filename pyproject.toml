@@ -1,18 +1,27 @@
 [tool.poetry]
 name = "takyaq"
 version = "0.1.0"
-description = ""
-authors = ["Your Name <you@example.com>"]
+description = "Optical piezo stage stabilization"
+authors = ["Andrés Zelcer <andres.zelcer@cibion.conicet.gov.ar>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.9"
 numpy = "^1.26.4"
 scipy = "^1.13.1"
-numba = "^0.60.0"
 
 [tool.poetry.group.dev.dependencies]
 spyder = "^5.5.5"
+
+#[tool.poetry.group.extras.dependencies]
+#numba = "^0.60.0"
+
+[tool.poetry.group.qt]
+optional = true
+
+[tool.poetry.group.qt.dependencies]
+pyqtgraph = "^0.13.7"
+pyqt5 = "^5.10"
 
 [build-system]
 requires = ["poetry-core"]

@@ -1,4 +1,5 @@
 # Takyaq
+
 Takyaq is a python module that stabilizes piezoelectric stages within few nm precision. It is is designed to be used in superresolution microscopy, altough it can be useful for many other applications, including photolithography.
 The module accompanies and complements the article XXXX, which explains how it works and shows its performance.
 
@@ -12,22 +13,30 @@ The module accompanies and complements the article XXXX, which explains how it w
  
 ## How to install
 Takyaq is not yet available in PyPi. Meanwhile installation and development is managed using [Poetry].
-Clone the repository:
+Clone the repository, either using `ssh`:
 ```sh
-git clone XXXXXXXX
+git clone git@github.com:azelcer/takyaq.git
 ```
-and then install required depenencies using:
+or `https`:
 ```sh
+git clone https://github.com/azelcer/pyflux.git
+```
+
+Install required dependencies using:
+```sh
+cd takyaq
 poetry install
 ```
-If you want to add some examples, you can use:
+
+If you want to add qt examples, you can use:
 ```sh
-Ver cómo instalar los extras
+poetry install --with qt
 ```
 
 So far, the following extras are available:
  - PyQt example
- - Mock Piezo and Camera modules
+
+Takyaq also includes a mock Piezo and Camera module for testing and development.
  
  
 Takyaq uses a number of open source projects to work properly:
