@@ -1,6 +1,4 @@
 # Takyaq
-## _Pensar un nombre lindo_
-
 Takyaq is a python module that stabilizes piezoelectric stages within few nm precision. It is is designed to be used in superresolution microscopy, altough it can be useful for many other applications, including photolithography.
 The module accompanies and complements the article XXXX, which explains how it works and shows its performance.
 

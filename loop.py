@@ -13,13 +13,12 @@ import logging as _lgn
 import time as _time
 import os as _os
 from typing import Callable as _Callable
-from queue import SimpleQueue as _sq
 from concurrent.futures import ProcessPoolExecutor as _PPE
 from typing import Union
 from classes import ROI, PointInfo
 
 from mocks import MockCamera, MockPiezo
-from responders import PIReactor
+from responders import BaseReactor, PIReactor, PIDReactor
 
 
 _lgn.basicConfig()
@@ -96,19 +95,17 @@ class StabilizerThread(_th.Thread):
     _last_image: _np.ndarray = _np.empty((50, 50))
 
     def __init__(
-        self, out_q: _sq, camera, piezo, nmpp_xy: float, nmpp_z: float,
+        self, camera, piezo, nmpp_xy: float, nmpp_z: float,
         callback: _Callable[[PointInfo], None] = None, *args, **kwargs
     ):
         """Init stabilization thread.
 
         Parameters
         ----------
-            out_q:
-                ...
+            ...
         """
         super().__init__(*args, **kwargs)
 
-        self._out_q = out_q
         # check if camera and piezo are OK
         if not callable(getattr(camera, "get_image", None)):
             raise ValueError("The camera object does not expose a 'get_image' method")
@@ -327,19 +324,16 @@ class StabilizerThread(_th.Thread):
                 self._cb(rv)
             except Exception as e:
                 _lgr.warning("Exception reporting to callback: %s(%s)", type(e), e)
-        # self._out_q.put_nowait(rv)
 
     def run(self):
         """Run main stabilization loop."""
         # TODO: let delay be configurable
-        DELAY = .05
+        DELAY = .1
         initial_xy_positions = None
         initial_z_position = None
         rsp = PIReactor()
         while not self._stop_event.is_set():
             lt = _time.monotonic()
-            x_shift = 0.0
-            y_shift = 0.0
             z_shift = 0.0
             xy_shifts = None
             try:
@@ -372,21 +366,13 @@ class StabilizerThread(_th.Thread):
                 xy_shifts = xy_positions - initial_xy_positions
             self._report(t, image, xy_shifts, z_shift)
             if self._z_stabilization or self._xy_stabilization:
-                # if self._xy_stabilization:
-                #     x_shift, y_shift = _np.nanmean(xy_shifts, axis=0)
-                #     if x_shift is _np.nan:
-                #         _lgr.warning("x shift is NAN")
-                #         x_shift = 0.0
-                #     if y_shift is _np.nan:
-                #         _lgr.warning("y shift is NAN")
-                #         y_shift = 0.0
                 if not self._z_stabilization:
                     z_shift = 0.0
                 if z_shift is _np.nan:
                     _lgr.warning("z shift is NAN")
                     z_shift = 0.0
-                x_resp, y_rsp, z_resp = rsp.response(xy_shifts, z_shift)
-                self._piezo.move(x_resp, y_rsp, z_resp)
+                x_resp, y_resp, z_resp = rsp.response(t, xy_shifts, z_shift)
+                self._piezo.move(x_resp, y_resp, z_resp)
             nt = _time.monotonic()
             delay = DELAY - (nt - lt)
             if delay < 0.001:  # be nice to other threads
@@ -394,29 +380,3 @@ class StabilizerThread(_th.Thread):
             _time.sleep(delay)
         _lgr.debug("Ending loop.")
 
-
-if __name__ == "__main__":
-    cola = _sq()
-    camera = MockCamera()
-    piezo = MockPiezo()
-    t = StabilizerThread(cola, camera, piezo, 25, 10)
-    t.start_loop()
-    _time.sleep(0.2)
-    t.set_z_roi(ROI(450, 550, 450, 550))
-    t.set_xy_rois([ROI(x - 30, x + 30, y - 30, y + 30) for x, y in camera.centers[:-1]])
-    _time.sleep(0.2)
-    t.set_z_tracking(True)
-    t.set_xy_tracking(True)
-    _time.sleep(0.2)
-    t.set_z_stabilization(True)
-    _time.sleep(1)
-    t.set_xy_stabilization(True)
-    _time.sleep(1)
-    # print("parando")
-    t.stop_loop()
-    try:
-        while h := cola.get(timeout=0.25):
-            ...
-            # print(h)
-    except:
-        print("Nada más en la cola")

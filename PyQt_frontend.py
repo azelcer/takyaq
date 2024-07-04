@@ -33,7 +33,8 @@ import pyqtgraph as pg
 
 import logging as _lgn
 
-from estabilizador import Stabilizer, MockCamera, MockPiezo, PointInfo, ROI
+from estabilizador import Stabilizer, PointInfo, ROI
+from mocks import MockCamera, MockPiezo
 
 _lgr = _lgn.getLogger(__name__)
 
@@ -136,8 +137,8 @@ class Frontend(QFrame):
             _CAMERA_X_NMPPX,
             _CAMERA_Y_NMPPX,
             _CAMERA_Z_NMPPX,
-            _CAMERA_X_NMPPX * 10,
-            3,
+            _CAMERA_X_NMPPX * 3,
+            2,
             10,
         )
         # Mock piezo motor, replace with your own
@@ -328,7 +329,7 @@ class Frontend(QFrame):
     @pyqtSlot(float, np.ndarray, float, np.ndarray)
     def get_data(self, t: float, img: np.ndarray, z: float, xy_shifts: np.ndarray):
         """Receive data from the stabilizer and graph it."""
-        # Meter esto al principio. Ver si grabar
+        # Ver si grabar
         if self._counter >= _MAX_POINTS:  # roll o grabar
             self._t_data[0:-1] = self._t_data[1:]
             self._I_data[0:-1] = self._I_data[1:]
@@ -337,8 +338,6 @@ class Frontend(QFrame):
             if self._xy_tracking_enabled and xy_shifts.shape[0]:
                 self._x_data[0:-1] = self._x_data[1:]
                 self._y_data[0:-1] = self._y_data[1:]
-                # x_mean[0:-1] = x_mean[1:]
-                # y_mean[0:-1] = y_mean[1:]
             self._counter -= 1
 
         # manage image data

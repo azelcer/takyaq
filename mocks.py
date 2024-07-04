@@ -50,9 +50,9 @@ class MockCamera:
         (800, 800),
     )
     sigma = 200.  # FWHM of the signals, in nm
-    _X_PERIOD = 1
-    _Y_PERIOD = _np.e
-    _Z_PERIOD = _np.pi
+    _X_PERIOD = 4
+    _Y_PERIOD = _np.e*4
+    _Z_PERIOD = _np.pi*4
     _shifts = _np.zeros((3,), dtype=_np.float64)
 
     grid = _np.array(_np.meshgrid(_np.arange(max_x), _np.arange(max_y), indexing="ij"))
@@ -135,7 +135,7 @@ class MockCamera:
         slicex = slice(max(cx - slice_size, 0), min(cx + slice_size, self.max_x))
         slicey = slice(max(cy - slice_size, 0), min(cy + slice_size, self.max_y))
         rv[slicex, slicey] += gaussian2D(  # use X coordinate nmpp, since it maps OK
-            self.grid[:, slicex, slicey], 150, x0, y0, self.sigma / self._nmpp_x, 0
+            self.grid[:, slicex, slicey], 550, x0, y0, self.sigma / self._nmpp_x, 0
         )
         return rv.astype(_np.uint16)
 
