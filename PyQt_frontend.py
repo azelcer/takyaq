@@ -99,7 +99,7 @@ class QReader(QObject):
 # Physical parameters specific for each setup (should go into a configuration file)
 _CAMERA_X_NMPPX = 23.5
 _CAMERA_Y_NMPPX = 23.5
-_CAMERA_Z_NMPPX = 36.0
+_CAMERA_Z_NMPPX = 1.0E-1
 
 # Globals (should go into a configuration file)
 _MAX_POINTS = 200
@@ -139,6 +139,7 @@ class Frontend(QFrame):
             _CAMERA_Y_NMPPX,
             _CAMERA_Z_NMPPX,
             _CAMERA_X_NMPPX * 7,
+            np.pi/4,
             2,
             10,
         )
@@ -151,8 +152,8 @@ class Frontend(QFrame):
         self.reset_xy_data_buffers(len(self._roilist))
         self.reset_z_data_buffers()
         self._est = Stabilizer(
-            self._camera, self._piezo, _CAMERA_X_NMPPX, _CAMERA_Z_NMPPX, BaseReactor(),
-            self._cbojt.cb
+            self._camera, self._piezo, _CAMERA_X_NMPPX, _CAMERA_Z_NMPPX, np.pi/4,
+            BaseReactor(), self._cbojt.cb
         )
         self._t0 = _time.time()
         self._est.start()

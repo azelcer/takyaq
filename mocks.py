@@ -54,14 +54,12 @@ class MockCamera:
     _Y_PERIOD = _np.e*4
     _Z_PERIOD = _np.pi*4
     _shifts = _np.zeros((3,), dtype=_np.float64)
-
     grid = _np.array(_np.meshgrid(_np.arange(max_x), _np.arange(max_y), indexing="ij"))
-    f = True
-    def __init__(self, nmpp_x, nmpp_y, nmpp_z, sigma, noise_level=3, drift_amplitude=3):
-        """Init Mock camera.
+    # f = True  # Camera fail first call flag
 
-        TODO: Improve Z movement mocking to include the physical subtleties (angle). So far,
-        it only shifts in the Z direction
+    def __init__(self, nmpp_x, nmpp_y, nmpp_z, sigma, z_ang: float, noise_level=3,
+                 drift_amplitude=3):
+        """Init Mock camera.
 
         Parameters
         ----------
@@ -73,6 +71,8 @@ class MockCamera:
             nanometers per pixel in Z direction (see comment).
         sigma : float
             FWHM of the signals, in nm.
+        z_ang: float (radians)
+            angle between z spot displacement and positive x direction
         noise_level : float, optional
             Random shifts of XYZ positions in nm. The default is 3.
         drift_amplitude : float, optional
@@ -83,12 +83,13 @@ class MockCamera:
         self._nmpp_x = nmpp_x
         self._nmpp_y = nmpp_y
         self._nmpp_z = nmpp_z
+        self._z_ang = z_ang
+        self._rot_vec = _np.array((_np.cos(self._z_ang), _np.sin(self._z_ang),))
         self.sigma = sigma
 
     def get_image(self):
         """Return a faked image."""
-        # Some random noise
-        # if not self.f:
+        # if not self.f:  # Camera fail mocking
         #     if _np.random.random_sample() > 0.9:  # falla una de cada 10
         #         raise ValueError("error en camara")
         # self.f = False
@@ -120,22 +121,20 @@ class MockCamera:
             rv[slicex, slicey] += gaussian2D(
                 self.grid[:, slicex, slicey], 550, x0, y0, self.sigma / self._nmpp_x, 0
             )
-        x0, y0 = self.centers[-1]
-        x0 += (
-            (_np.random.random_sample() - 0.5) * self._nl
-            + (
-                2 * abs(2 * (t / self._Z_PERIOD - _np.floor(t / self._Z_PERIOD + 0.5)))
-                - 1
-            )
-            * self._drift
-        ) / self._nmpp_z
-        x0 += self._shifts[2] / self._nmpp_z
-        cx = int(x0)
-        cy = int(y0)
+
+        # Z mocking: triangular wave
+        r = self._shifts[2] + self._drift * (2 * abs(2 * (
+            t / self._Z_PERIOD - _np.floor(t / self._Z_PERIOD + 0.5)))-1)
+        r *= self._rot_vec / self._nmpp_z
+        r += (_np.random.random_sample((2,)) - 0.5) * self._nl
+        r += _np.array(self.centers[-1])
+
+        cx = int(r[0])
+        cy = int(r[1])
         slicex = slice(max(cx - slice_size, 0), min(cx + slice_size, self.max_x))
         slicey = slice(max(cy - slice_size, 0), min(cy + slice_size, self.max_y))
         rv[slicex, slicey] += gaussian2D(  # use X coordinate nmpp, since it maps OK
-            self.grid[:, slicex, slicey], 550, x0, y0, self.sigma / self._nmpp_x, 0
+            self.grid[:, slicex, slicey], 550, r[0], r[1], self.sigma / self._nmpp_x, 0
         )
         return rv.astype(_np.uint16)
 

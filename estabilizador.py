@@ -26,13 +26,14 @@ class Stabilizer:
         piezo,
         pixel2dist_xy: float,
         pixel2dist_z: float,
+        z_ang: float,
         corrector,
         callback: _Callable[[PointInfo], None] = None,
     ):
         self._camera = camera
         self._piezo = piezo
         self._thread = _ST(camera, piezo, pixel2dist_xy,
-                           pixel2dist_z, corrector, callback)
+                           pixel2dist_z, z_ang, corrector, callback)
 
     def set_xy_rois(self, rois: list[ROI]) -> bool:
         return self._thread.set_xy_rois(rois)

@@ -92,8 +92,8 @@ class StabilizerThread(_th.Thread):
     _last_image: _np.ndarray = _np.empty((50, 50))
 
     def __init__(
-        self, camera, piezo, nmpp_xy: float, nmpp_z: float, corrector,
-        callback: _Callable[[PointInfo], None] = None, *args, **kwargs
+        self, camera, piezo, nmpp_xy: float, nmpp_z: float, z_ang: float,
+        corrector, callback: _Callable[[PointInfo], None] = None, *args, **kwargs
     ):
         """Init stabilization thread.
 
@@ -109,6 +109,7 @@ class StabilizerThread(_th.Thread):
         self._camera = camera
         self._nmpp_xy = nmpp_xy
         self._nmpp_z = nmpp_z
+        self._rot_vec = _np.array((_np.cos(z_ang), _np.sin(z_ang), ))
 
         if not callable(getattr(piezo, "move", None)):
             raise ValueError("The piezo object does not expose a 'move' method")
@@ -308,9 +309,7 @@ class StabilizerThread(_th.Thread):
         roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
         # TODO: Add rotation angle
         # ang is measured counterclockwise from the X axis. We rotate *clockwise*
-        # rv = _np.sum(_np.array(_sp.ndimage.center_of_mass(roi)) *
-        #       _np.array((_np.cos(ang), _np.sin(ang)))) * self._nmpp_z
-        rv = _sp.ndimage.center_of_mass(roi)[0] * self._nmpp_z
+        rv = _np.sum(_np.array(_sp.ndimage.center_of_mass(roi)) * self._rot_vec) * self._nmpp_z
         return rv
 
     def _report(self, t: float, image: _np.ndarray,
