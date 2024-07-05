@@ -331,7 +331,15 @@ class Frontend(QFrame):
 
     @pyqtSlot(bool)
     def _calibrate_x(self, clicked: bool):
-        self._est.calibrate_x()
+        self._est.calibrate('x')
+
+    @pyqtSlot(bool)
+    def _calibrate_y(self, clicked: bool):
+        self._est.calibrate('y')
+
+    @pyqtSlot(bool)
+    def _calibrate_z(self, clicked: bool):
+        self._est.calibrate('z')
 
     @pyqtSlot(float, np.ndarray, float, np.ndarray)
     def get_data(self, t: float, img: np.ndarray, z: float, xy_shifts: np.ndarray):
@@ -359,7 +367,9 @@ class Frontend(QFrame):
         if self._z_tracking_enabled:
             self._z_data[self._counter] = z
             # update reports
-            self.zstd_value.setText(f"{np.nanstd(self._z_data[:self._counter]):.2f}")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                self.zstd_value.setText(f"{np.nanstd(self._z_data[:self._counter]):.2f}")
             # update Graphs
             z_data = self._z_data[: self._counter + 1]
             self.zCurve.setData(t_data, z_data)
@@ -493,6 +503,10 @@ class Frontend(QFrame):
         # self.clearDataButton = QPushButton('Clear data')
         self.calibrateXButton = QPushButton('Calibrate X')
         self.calibrateXButton.clicked.connect(self._calibrate_x)
+        self.calibrateYButton = QPushButton('Calibrate Y')
+        self.calibrateYButton.clicked.connect(self._calibrate_y)
+        self.calibrateZButton = QPushButton('Calibrate Z')
+        self.calibrateZButton.clicked.connect(self._calibrate_z)
         subgrid = QGridLayout()
         self.paramWidget.setLayout(subgrid)
 
@@ -503,8 +517,11 @@ class Frontend(QFrame):
         subgrid.addWidget(trackgb, 4, 0)
         subgrid.addWidget(lockgb, 5, 0)
         subgrid.addWidget(self.exportDataButton, 6, 0)
+        # TODO: group these 3 buttons horizontally
         subgrid.addWidget(self.calibrateXButton, 7, 0)
-        # subgrid.addWidget(self.clearDataButton, 7, 0)
+        subgrid.addWidget(self.calibrateYButton, 8, 0)
+        subgrid.addWidget(self.calibrateZButton, 9, 0)
+        # subgrid.addWidget(self.clearDataButton, 9, 0)
 
         # stats widget
         self.statWidget = QGroupBox("Live statistics")

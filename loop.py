@@ -244,8 +244,15 @@ class StabilizerThread(_th.Thread):
         self._z_stabilization = False
         return True
 
-    def calibrate(self, direction: str = 'x') -> bool:
-        """perform calibration of pixel size."""
+    def calibrate(self, direction: str) -> bool:
+        """Perform calibration of pixel size."""
+        if direction not in ['x', 'y', 'z']:
+            _lgr.warning("Invalid calibration direction: %s", direction)
+            return False
+        if direction == 'z':  # no match yet (we support python 3.9)
+            _lgr.warning("Z calibration not yet implemented")
+            return False
+        self._calib_idx = 0 if direction == 'x' else 1
         self._calibrate_event.set()
 
     def set_z_stabilization(self, enabled: bool) -> bool:
@@ -342,8 +349,11 @@ class StabilizerThread(_th.Thread):
         """Calibrate nm per pixel.
 
         Runs it own loop.
+        TODO: Handle x and y calibration. Inform about XY coupling (camera rotation?)
+        WARNING: Z must be handled separately
         """
-        shifts, step = _np.linspace(-length/.2, length/.2, points, retstep=True)
+        c_idx = self._calib_idx  # 0 for X, 1 for Y, Z is complicated
+        shifts, step = _np.linspace(-length/2., length/2., points, retstep=True)
         response = _np.empty_like(shifts)
         if self._xy_rois is None:
             _lgr.warning("Trying to calibrate xy without ROIs")
@@ -352,20 +362,26 @@ class StabilizerThread(_th.Thread):
             _lgr.warning("Trying to calibrate xy without tracking")
             return False
         oldpos = _np.copy(self._pos)
+        rel_vec = _np.zeros((3,))
         try:
-            self._move_relative(-length/.2, 0, 0)
+            rel_vec[c_idx] = -length/2.
+            self._move_relative(*rel_vec)
+            rel_vec[c_idx] = step
             image = self._camera.get_image()
-            self._initialize_last_params()
+            self._initialize_last_params()  # we made a LARGE shift
             for idx, s in enumerate(shifts):
                 image = self._camera.get_image()
                 xy_shifts = self._locate_xy_centers(image)
                 self._report(_time.time(), image, xy_shifts - initial_xy_positions, 0)
-                x = _np.nanmean(xy_shifts[:, 0])
+                x = _np.nanmean(xy_shifts[:, c_idx])
                 response[idx] = x
-                self._move_relative(step, 0, 0)
+                self._move_relative(*rel_vec)
                 _time.sleep(.050)
             for x, y in zip(shifts, response):
                 print(f"{x}, {y}")
+            vec, _ = _np.linalg.lstsq(_np.vstack([shifts, _np.ones(points)]).T,
+                                      response, rcond=None)[0]
+            print("slope = ", 1/vec)
         except Exception as e:
             _lgr.warning("Exception calibrating x: %s(%s)", type(e), e)
         self._pos[:] = oldpos
@@ -383,7 +399,7 @@ class StabilizerThread(_th.Thread):
             xy_shifts = None
             if self._calibrate_event.is_set():
                 _lgr.debug("Calibration event received")
-                self._calibrate_x(20., initial_xy_positions)
+                self._calibrate_x(50., initial_xy_positions)
                 self._calibrate_event.clear()
             try:
                 image = self._camera.get_image()
