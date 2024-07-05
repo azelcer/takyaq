@@ -90,6 +90,7 @@ class StabilizerThread(_th.Thread):
     _xy_rois = None  # mins, maxs
     _z_roi = None  # min/max x, min/max y
     _last_image: _np.ndarray = _np.empty((50, 50))
+    _pos = _np.zeros((3,))
 
     def __init__(
         self, camera, piezo, nmpp_xy: float, nmpp_z: float, z_ang: float,
@@ -111,8 +112,10 @@ class StabilizerThread(_th.Thread):
         self._nmpp_z = nmpp_z
         self._rot_vec = _np.array((_np.cos(z_ang), _np.sin(z_ang), ))
 
-        if not callable(getattr(piezo, "move", None)):
-            raise ValueError("The piezo object does not expose a 'move' method")
+        if not callable(getattr(piezo, "set_positions", None)):
+            raise ValueError("The piezo object does not expose a 'set_positions' method")
+        if not callable(getattr(piezo, "get_positions", None)):
+            raise ValueError("The piezo object does not expose a 'get_positions' method")
         self._piezo = piezo
         self._stop_event = _th.Event()
         self._stop_event.set()
@@ -120,6 +123,7 @@ class StabilizerThread(_th.Thread):
         self._xy_track_event.set()
         self._z_roi_OK_event = _th.Event()
         self._z_roi_OK_event.set()
+        self._calibrate_event = _th.Event()
         self._rsp = corrector
         self._cb = callback
 
@@ -240,6 +244,10 @@ class StabilizerThread(_th.Thread):
         self._z_stabilization = False
         return True
 
+    def calibrate(self, direction: str = 'x') -> bool:
+        """perform calibration of pixel size."""
+        self._calibrate_event.set()
+
     def set_z_stabilization(self, enabled: bool) -> bool:
         """Set stabilization of Z position ON or OFF."""
         if enabled:
@@ -256,7 +264,6 @@ class StabilizerThread(_th.Thread):
         nproc = _os.cpu_count()
         params = [[_np.eye(3)] * nproc, [1.] * nproc, [1.] * nproc, [1.] * nproc]
         _ = tuple(self._executor.map(gaussian_fit, *params))
-
         self._stop_event.clear()
         self.start()
 
@@ -312,6 +319,12 @@ class StabilizerThread(_th.Thread):
         rv = _np.sum(_np.array(_sp.ndimage.center_of_mass(roi)) * self._rot_vec) * self._nmpp_z
         return rv
 
+    def _move_relative(self, dx: float, dy: float, dz: float):
+        self._pos[0] += dx
+        self._pos[1] += dy
+        self._pos[2] += dz
+        self._piezo.set_positions(*self._pos)
+        
     def _report(self, t: float, image: _np.ndarray,
                 xy_shifts: Union[_np.ndarray, None], z_shift: float):
         """Send data to provided callback."""
@@ -324,6 +337,40 @@ class StabilizerThread(_th.Thread):
             except Exception as e:
                 _lgr.warning("Exception reporting to callback: %s(%s)", type(e), e)
 
+    def _calibrate_x(self, length: float, initial_xy_positions: _np.ndarray,
+                     points: int = 20):
+        """Calibrate nm per pixel.
+
+        Runs it own loop.
+        """
+        shifts, step = _np.linspace(-length/.2, length/.2, points, retstep=True)
+        response = _np.empty_like(shifts)
+        if self._xy_rois is None:
+            _lgr.warning("Trying to calibrate xy without ROIs")
+            return False
+        if not self._xy_track_event.is_set():
+            _lgr.warning("Trying to calibrate xy without tracking")
+            return False
+        oldpos = _np.copy(self._pos)
+        try:
+            self._move_relative(-length/.2, 0, 0)
+            image = self._camera.get_image()
+            self._initialize_last_params()
+            for idx, s in enumerate(shifts):
+                image = self._camera.get_image()
+                xy_shifts = self._locate_xy_centers(image)
+                self._report(_time.time(), image, xy_shifts - initial_xy_positions, 0)
+                x = _np.nanmean(xy_shifts[:, 0])
+                response[idx] = x
+                self._move_relative(step, 0, 0)
+                _time.sleep(.050)
+            for x, y in zip(shifts, response):
+                print(f"{x}, {y}")
+        except Exception as e:
+            _lgr.warning("Exception calibrating x: %s(%s)", type(e), e)
+        self._pos[:] = oldpos
+        self._piezo.set_positions(*self._pos)
+
     def run(self):
         """Run main stabilization loop."""
         # TODO: let delay be configurable
@@ -334,6 +381,10 @@ class StabilizerThread(_th.Thread):
             lt = _time.monotonic()
             z_shift = 0.0
             xy_shifts = None
+            if self._calibrate_event.is_set():
+                _lgr.debug("Calibration event received")
+                self._calibrate_x(20., initial_xy_positions)
+                self._calibrate_event.clear()
             try:
                 image = self._camera.get_image()
                 t = _time.time()
@@ -376,7 +427,7 @@ class StabilizerThread(_th.Thread):
                     z_resp = 0.0
                 if not self._xy_stabilization:
                     x_resp = y_resp = 0.0
-                self._piezo.move(x_resp, y_resp, z_resp)
+                self._move_relative(x_resp, y_resp, z_resp)
             nt = _time.monotonic()
             delay = DELAY - (nt - lt)
             if delay < 0.001:  # be nice to other threads

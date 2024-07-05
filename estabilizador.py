@@ -77,6 +77,9 @@ class Stabilizer:
     def set_z_stabilization(self, enabled: bool) -> bool:
         return self._thread.set_z_stabilization(enabled)
 
+    def calibrate_x(self, *args) -> bool:
+        return self._thread.calibrate('x')
+
     def start(self) -> bool:
         """Inicia el loop de estabilización."""
         self._thread.start_loop()

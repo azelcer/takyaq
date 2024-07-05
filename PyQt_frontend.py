@@ -99,7 +99,7 @@ class QReader(QObject):
 # Physical parameters specific for each setup (should go into a configuration file)
 _CAMERA_X_NMPPX = 23.5
 _CAMERA_Y_NMPPX = 23.5
-_CAMERA_Z_NMPPX = 1.0E-1
+_CAMERA_Z_NMPPX = 10
 
 # Globals (should go into a configuration file)
 _MAX_POINTS = 200
@@ -138,7 +138,7 @@ class Frontend(QFrame):
             _CAMERA_X_NMPPX,
             _CAMERA_Y_NMPPX,
             _CAMERA_Z_NMPPX,
-            _CAMERA_X_NMPPX * 7,
+            _CAMERA_X_NMPPX * 7, # en pixeles
             np.pi/4,
             2,
             10,
@@ -329,6 +329,10 @@ class Frontend(QFrame):
             self._est.enable_xy_stabilization()
             self._xy_locking_enabled = True
 
+    @pyqtSlot(bool)
+    def _calibrate_x(self, clicked: bool):
+        self._est.calibrate_x()
+
     @pyqtSlot(float, np.ndarray, float, np.ndarray)
     def get_data(self, t: float, img: np.ndarray, z: float, xy_shifts: np.ndarray):
         """Receive data from the stabilizer and graph it."""
@@ -487,6 +491,8 @@ class Frontend(QFrame):
 
         self.exportDataButton = QPushButton("Export data")
         # self.clearDataButton = QPushButton('Clear data')
+        self.calibrateXButton = QPushButton('Calibrate X')
+        self.calibrateXButton.clicked.connect(self._calibrate_x)
         subgrid = QGridLayout()
         self.paramWidget.setLayout(subgrid)
 
@@ -497,6 +503,7 @@ class Frontend(QFrame):
         subgrid.addWidget(trackgb, 4, 0)
         subgrid.addWidget(lockgb, 5, 0)
         subgrid.addWidget(self.exportDataButton, 6, 0)
+        subgrid.addWidget(self.calibrateXButton, 7, 0)
         # subgrid.addWidget(self.clearDataButton, 7, 0)
 
         # stats widget

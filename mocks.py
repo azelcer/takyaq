@@ -24,11 +24,11 @@ class MockCamera:
     """Mock camera for testing and development.
 
     Simulates a drift that:
-        - Shifts X position in a sinusoidal way with period 1.
-        - Shifts Y position in a sinusoidal way with period e.
-        - Shifts Z position in a sinusoidal way with period pi.
+        - Shifts X position in a sinusoidal way with period 4.
+        - Shifts Y position in a sinusoidal way with period 4e.
+        - Shifts Z position in a triangular way with period 4pi.
 
-    Moreover, it adds random noise to the position of the fiducial markers and a
+    Moreover, it adds random noise to the position of the marks and a
     background noise.
     """
 
@@ -158,17 +158,19 @@ class MockPiezo:
     It can shift the zero of the mock camera, to test stabilization strategies.
     """
 
-    lastime = _time.monotonic()
+    _pos: _np.ndarray = _np.zeros((3,))
 
     def __init__(self, camera=None):
         self._camera = camera
 
-    def move(self, *args):
-        t = _time.monotonic()
-        # print("loop took:", t-self.lastime, "shifts=", args)
+    def get_positions(self):
+        return tuple(self._pos)
+
+    def set_positions(self, x: float, y: float, z: float):
+        npos = _np.array((x, y, z,), dtype=float)
         if self._camera:
             self._camera.shift(
-                args[0], args[1], args[2]
+                *(npos - self._pos)
             )
-        self.lastime = t
+        self._pos = npos
         return
