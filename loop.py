@@ -249,10 +249,11 @@ class StabilizerThread(_th.Thread):
         if direction not in ['x', 'y', 'z']:
             _lgr.warning("Invalid calibration direction: %s", direction)
             return False
-        if direction == 'z':  # no match yet (we support python 3.9)
-            _lgr.warning("Z calibration not yet implemented")
-            return False
-        self._calib_idx = 0 if direction == 'x' else 1
+        # if direction == 'z':  # no match yet (we support python 3.9)
+        #     _lgr.warning("Z calibration not yet implemented")
+        #     return False
+        self._calib_idx  = {'x': 0, 'y': 1, 'z': 2}[direction]
+        # self._calib_idx = 0 if direction == 'x' else 1
         self._calibrate_event.set()
 
     def set_z_stabilization(self, enabled: bool) -> bool:
@@ -344,7 +345,7 @@ class StabilizerThread(_th.Thread):
             except Exception as e:
                 _lgr.warning("Exception reporting to callback: %s(%s)", type(e), e)
 
-    def _calibrate_x(self, length: float, initial_xy_positions: _np.ndarray,
+    def _calibrate_xy(self, length: float, initial_xy_positions: _np.ndarray,
                      points: int = 20):
         """Calibrate nm per pixel.
 
@@ -387,6 +388,48 @@ class StabilizerThread(_th.Thread):
         self._pos[:] = oldpos
         self._piezo.set_positions(*self._pos)
 
+    def _calibrate_z(self, length: float, initial_xy_positions: _np.ndarray,
+                     points: int = 20):
+        """Calibrate nm per pixel.
+
+        Runs it own loop.
+        """
+        shifts, step = _np.linspace(-length/2., length/2., points, retstep=True)
+        response = _np.empty((points, 2, ))
+        if self._z_roi is None:
+            _lgr.warning("Trying to calibrate z without ROI")
+            return False
+        if not self._z_roi_OK_event.is_set():
+            _lgr.warning("Trying to calibrate z without tracking")
+            return False
+        oldpos = _np.copy(self._pos)
+        rel_vec = _np.zeros((3,))
+        try:
+            rel_vec[2] = -length/2.
+            self._move_relative(*rel_vec)
+            rel_vec[2] = step
+            image = self._camera.get_image()
+            for idx, s in enumerate(shifts):
+                image = self._camera.get_image()
+                roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
+                c = _np.array(_sp.ndimage.center_of_mass(roi))
+                xy_data = (None if self._xy_rois is None else
+                           _np.full_like((len(self._xy_rois), 2), _np.nan))
+                self._report(_time.time(), image, xy_data, _np.nan)
+                response[idx] = c
+                self._move_relative(*rel_vec)
+                _time.sleep(.050)
+            for x, y in zip(shifts, response):
+                print(f"{x}, {y}")
+            # vec, _ = _np.linalg.lstsq(_np.vstack([shifts, _np.ones(points)]).T,
+            #                            response, rcond=None)[0]
+            # print("slope = ", 1/vec)
+        except Exception as e:
+            _lgr.warning("Exception calibrating z: %s(%s)", type(e), e)
+        self._pos[:] = oldpos
+        self._piezo.set_positions(*self._pos)
+
+
     def run(self):
         """Run main stabilization loop."""
         # TODO: let delay be configurable
@@ -399,7 +442,12 @@ class StabilizerThread(_th.Thread):
             xy_shifts = None
             if self._calibrate_event.is_set():
                 _lgr.debug("Calibration event received")
-                self._calibrate_x(50., initial_xy_positions)
+                if self._calib_idx >= 0 and self._calib_idx < 2:
+                    self._calibrate_xy(50., initial_xy_positions)
+                elif self._calib_idx ==2:
+                    self._calibrate_z(10., initial_xy_positions)
+                else:
+                    _lgr.warning("Invalid calibration direction detected")
                 self._calibrate_event.clear()
             try:
                 image = self._camera.get_image()
