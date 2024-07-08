@@ -71,7 +71,7 @@ Calibration data needed:
  
 The software provides a procedure to obtain the calibration data. Nevertheless, see below for calibration pitfalls.
 
-###Stabliziation strategies
+### Stabilization strategies
 The program comes with some predefined stabilization strategies:
   - PID
   - Short - time memory PID
@@ -131,3 +131,4 @@ MIT???
    [Poetry]: <http://angularjs.org>
    [NumPy]: <https://numpy.org/>
    [black]: <https://black.readthedocs.io/en/stable/>
+   [Numba]: <https://numba.pydata.org/>
