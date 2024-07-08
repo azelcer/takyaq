@@ -10,6 +10,13 @@ The module accompanies and complements the article XXXX, which explains how it w
  - GUI agnostic.
  - Customizable and adaptable to any stage.
  - Tested and explained.
+
+
+## What is included
+ - A stabilizer module.
+ - A fully functional PyQt frontend that is more than an example.
+ - Mock camera and piezo modules, so you can develop, test and try without real equipment.
+ - Different stabilization strategies so you can choose your own withouth rolling your own.
  
 ## How to install
 Takyaq is not yet available in PyPi. Meanwhile installation and development is managed using [Poetry].
@@ -33,12 +40,9 @@ If you want to add qt examples, you can use:
 poetry install --with qt
 ```
 
-So far, the following extras are available:
- - PyQt example
-
 Takyaq also includes a mock Piezo and Camera module for testing and development.
  
- 
+
 Takyaq uses a number of open source projects to work properly:
 
 - [NumPy] - For efficient scientific computing
@@ -46,19 +50,13 @@ Takyaq uses a number of open source projects to work properly:
 
 It can also profit of [Numba] for extra speed.
 
-## What is included
- - A stabilizer module.
- - A fully functional PyQt frontend that is more than an example.
- - Mock camera and piezo modules, so you can develop, test and try without real equipment.
- - Different stabilization strategies so you can choose your own withouth rolling your own.
- 
 ## How to use
 ### Module
 Interfaces needed:
  - A camera module, that exposes a function named `get_XXX` and returns a single color
-  image a (2D array)
+  image (a [NumPy] 2D array)
  - A piezo module, that must expose two functions
-   - One called `get_positions` that returns a 3 element collection (list, array or tuple) of x, y, and z positions *in nanometers*.
+   - One called `get_positions` that returns a 3-element collection (list, array, tuple, etc) of x, y, and z positions *in nanometers*.
    - One called `set_positions` that takes 3 arguments: the x, y, and z positions where the stage should move *in nanometers*.
 
 If the Python interfaces to your camera and stage use different naming or scale conventions, some adapting interfaces are provided in the XXX module.
@@ -71,13 +69,33 @@ Calibration data needed:
  
 The software provides a procedure to obtain the calibration data. Nevertheless, see below for calibration pitfalls.
 
+The module communicates with other modules using a callback object. The callback should do its job (put the dat in a queue, etc.) fast, so the latency between position corrections is short. Check the PyQt example for a basic idea.
+
 ### Stabilization strategies
 The program comes with some predefined stabilization strategies:
   - PID
   - Short - time memory PID
 
 You can implement your own strategies (for example ignoring fiduciary marks that have moved beyond a certain limit). Just see the code for some examples.
- 
+
+### Adapting to interfaces.
+Assume you have a piezo that exposes functions that are called `move_to` instead of `set_positions` and `get_pos` instead of `get_position`, and takes and receives the values in micrometers. You can use the wrappers
+from the module `adapters`: (todavia no existen)
+```python
+from takyaq.adapters imports InMicrons  # adapter
+import my_piezo_driver
+
+# Do whatever your driver needs you to do
+motor = my_piezodriver.get_motor()
+motor.init()
+
+# Wrap the motor
+wrapped_motor = InMicrons(motor.get_pos, motor.move_to)
+
+# Now you can use `wrapped_motor` with takyaq 
+
+```
+
 ### PyQt frontend
 The provided PyQt frontend is a fully functional example of how to use the stabilization module. For most purposes, you can use it _as is_.
  - Provide a camera (por ahora reemplazar `self._camera`)
