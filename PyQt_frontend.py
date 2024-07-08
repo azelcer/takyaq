@@ -140,7 +140,7 @@ class Frontend(QFrame):
             _CAMERA_Z_NMPPX,
             _CAMERA_X_NMPPX * 7, # en pixeles
             np.pi/4,
-            2,
+            1,  # Center position noise in pixels
             10,
         )
         # Mock piezo motor, replace with your own

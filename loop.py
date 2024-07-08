@@ -286,7 +286,10 @@ class StabilizerThread(_th.Thread):
         _lgr.debug("Loop ended")
 
     def _locate_xy_centers(self, image: _np.ndarray) -> _np.ndarray:
-        """Locate centers in XY ROIS."""
+        """Locate centers in XY ROIS.
+
+        Returns values in pixels
+        """
         trimmeds = [image[roi[0, 0]:roi[0, 1], roi[1, 0]: roi[1, 1]]
                     for roi in self._xy_rois]
         x = self._last_params['x']
@@ -375,7 +378,7 @@ class StabilizerThread(_th.Thread):
                 xy_shifts = self._locate_xy_centers(image)
                 self._report(_time.time(), image, xy_shifts - initial_xy_positions, 0)
                 x = _np.nanmean(xy_shifts[:, c_idx])
-                response[idx] = x
+                response[idx] = x / self._nmpp_xy
                 self._move_relative(*rel_vec)
                 _time.sleep(.050)
             for x, y in zip(shifts, response):
@@ -414,7 +417,7 @@ class StabilizerThread(_th.Thread):
                 roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
                 c = _np.array(_sp.ndimage.center_of_mass(roi))
                 xy_data = (None if self._xy_rois is None else
-                           _np.full_like((len(self._xy_rois), 2), _np.nan))
+                           self._locate_xy_centers(image) - initial_xy_positions)
                 self._report(_time.time(), image, xy_data, _np.nan)
                 response[idx] = c
                 self._move_relative(*rel_vec)
@@ -424,6 +427,9 @@ class StabilizerThread(_th.Thread):
             vec, _ = _np.linalg.lstsq(_np.vstack([shifts, _np.ones(points)]).T,
                                         response, rcond=None)[0]
             print("slope = ", 1/vec)
+            print("nmpp z = ", _np.sum(1./vec**2)**.5)
+            # watch out order
+            print("Angle(rad) = ", _np.arctan2(vec[1], vec[0]))
         except Exception as e:
             _lgr.warning("Exception calibrating z: %s(%s)", type(e), e)
         self._pos[:] = oldpos
