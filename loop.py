@@ -392,7 +392,7 @@ class StabilizerThread(_th.Thread):
                      points: int = 20):
         """Calibrate nm per pixel.
 
-        Runs it own loop.
+        Runs itz own loop.
         """
         shifts, step = _np.linspace(-length/2., length/2., points, retstep=True)
         response = _np.empty((points, 2, ))
@@ -421,9 +421,9 @@ class StabilizerThread(_th.Thread):
                 _time.sleep(.050)
             for x, y in zip(shifts, response):
                 print(f"{x}, {y}")
-            # vec, _ = _np.linalg.lstsq(_np.vstack([shifts, _np.ones(points)]).T,
-            #                            response, rcond=None)[0]
-            # print("slope = ", 1/vec)
+            vec, _ = _np.linalg.lstsq(_np.vstack([shifts, _np.ones(points)]).T,
+                                        response, rcond=None)[0]
+            print("slope = ", 1/vec)
         except Exception as e:
             _lgr.warning("Exception calibrating z: %s(%s)", type(e), e)
         self._pos[:] = oldpos
@@ -445,7 +445,7 @@ class StabilizerThread(_th.Thread):
                 if self._calib_idx >= 0 and self._calib_idx < 2:
                     self._calibrate_xy(50., initial_xy_positions)
                 elif self._calib_idx ==2:
-                    self._calibrate_z(10., initial_xy_positions)
+                    self._calibrate_z(20., initial_xy_positions)
                 else:
                     _lgr.warning("Invalid calibration direction detected")
                 self._calibrate_event.clear()
