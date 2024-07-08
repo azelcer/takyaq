@@ -53,11 +53,59 @@ It can also profit of [Numba] for extra speed.
  - Different stabilization strategies so you can choose your own withouth rolling your own.
  
 ## How to use
-Blah Blah
+### Module
+Interfaces needed:
+ - A camera module, that exposes a function named `get_XXX` and returns a single color
+  image a (2D array)
+ - A piezo module, that must expose two functions
+   - One called `get_positions` that returns a 3 element collection (list, array or tuple) of x, y, and z positions *in nanometers*.
+   - One called `set_positions` that takes 3 arguments: the x, y, and z positions where the stage should move *in nanometers*.
+
+If the Python interfaces to your camera and stage use different naming or scale conventions, some adapting interfaces are provided in the XXX module.
+
+Calibration data needed:
+ - How many nanometers each camera pixel represents in the X and Y directions.
+ - How the Z reflection spot moves when the Z position changes:
+   - The direction (angle between the X axis and the line where the spot moves)
+   - The number of pixels that the spot moves for each nanometers
+ 
+The software provides a procedure to obtain the calibration data. Nevertheless, see below for calibration pitfalls.
+
+###Stabliziation strategies
+The program comes with some predefined stabilization strategies:
+  - PID
+  - Short - time memory PID
+
+You can implement your own strategies (for example ignoring fiduciary marks that have moved beyond a certain limit). Just see the code for some examples.
+ 
+### PyQt frontend
+The provided PyQt frontend is a fully functional example of how to use the stabilization module. For most purposes, you can use it _as is_.
+ - Provide a camera (por ahora reemplazar `self._camera`)
+ - Provide a piezo (por ahora reemplazar `self._piezo`)
+ - Provide calibration values.
+     - If you know the X and Y pixel size, introduce the values in the XXX global variables.
+     - If you know the Z spot movement angle and displacement, introduce the values in the XXX variables.
+     - If you do not know the values, just leave them as they are, and use the calibration procedure reported below
+ - Run the program.
+ - Manually focus the beads and Z spot reflection.
+ - Create the Z ROI and move it to encompass the Z spot reflection.
+ - You can check the _Z_ tracking checkbox right away.
+ - If you have provided calibration values, you can also marck the _Z_ lock checkbox to stabilize the position.
+ - Create as many _XY_ ROIs as you need. Move them to encompass one mark each.
+ - You can check the _XY_ tracking checkbox.
+ - If you have provided calibration values, you can also check the _XY_ lock checkbox to stabilize the position.
+
+Calibration:
+ - You need to have created the ROIs of the calibration you want to perform.
+ - Be sure to have started tracking (but not locking).
+ - Press the Desired "Calibrate" button. The calibration data will be printed to screen.
+ - You might want to repeat and average the calibrations
 
 ### Camera and piezo orientation
+  Blah blah
 
-Be careful
+### Pixel sizes
+Be careful since the pixel sizes used and determined using the provided calibration are only self-consistent. If the stage calibration is incorrect, the program will report valid but incorrect values for the stabilization precision.
 
 
 ## Some design comments
