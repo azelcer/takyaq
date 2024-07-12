@@ -100,7 +100,11 @@ class StabilizerThread(_th.Thread):
 
         Parameters
         ----------
-            ...
+            camera:
+                Camera. Must implement a method called `get_image`, that returns
+                a 2d numpy.ndarray representing the image
+           piezo:
+               Piezo controller. Must implement a method called
         """
         super().__init__(*args, **kwargs)
 
@@ -112,10 +116,10 @@ class StabilizerThread(_th.Thread):
         self._nmpp_z = nmpp_z
         self._rot_vec = _np.array((_np.cos(z_ang), _np.sin(z_ang), ))
 
-        if not callable(getattr(piezo, "set_positions", None)):
-            raise ValueError("The piezo object does not expose a 'set_positions' method")
-        if not callable(getattr(piezo, "get_positions", None)):
-            raise ValueError("The piezo object does not expose a 'get_positions' method")
+        if not callable(getattr(piezo, "set_position", None)):
+            raise ValueError("The piezo object does not expose a 'set_position' method")
+        if not callable(getattr(piezo, "get_position", None)):
+            raise ValueError("The piezo object does not expose a 'get_position' method")
         self._piezo = piezo
         self._stop_event = _th.Event()
         self._stop_event.set()
@@ -149,6 +153,7 @@ class StabilizerThread(_th.Thread):
         if self._z_tracking:
             _lgr.warning("Trying to change z ROI while tracking is active")
             return False
+        # TODO: protect against negative numbers max(0, _.min_x), min(_.max_x, self.img.shape[1])
         self._z_roi = _np.array(
             [[roi.min_x, roi.max_x], [roi.min_y, roi.max_y]], dtype=_np.uint16
         )
@@ -334,7 +339,7 @@ class StabilizerThread(_th.Thread):
         self._pos[0] += dx
         self._pos[1] += dy
         self._pos[2] += dz
-        self._piezo.set_positions(*self._pos)
+        self._piezo.set_position(*self._pos)
         
     def _report(self, t: float, image: _np.ndarray,
                 xy_shifts: Union[_np.ndarray, None], z_shift: float):
@@ -389,7 +394,7 @@ class StabilizerThread(_th.Thread):
         except Exception as e:
             _lgr.warning("Exception calibrating x: %s(%s)", type(e), e)
         self._pos[:] = oldpos
-        self._piezo.set_positions(*self._pos)
+        self._piezo.set_position(*self._pos)
 
     def _calibrate_z(self, length: float, initial_xy_positions: _np.ndarray,
                      points: int = 20):
@@ -433,13 +438,13 @@ class StabilizerThread(_th.Thread):
         except Exception as e:
             _lgr.warning("Exception calibrating z: %s(%s)", type(e), e)
         self._pos[:] = oldpos
-        self._piezo.set_positions(*self._pos)
+        self._piezo.set_position(*self._pos)
 
 
     def run(self):
         """Run main stabilization loop."""
         # TODO: let delay be configurable
-        DELAY = .1
+        DELAY = .05
         initial_xy_positions = None
         initial_z_position = None
         while not self._stop_event.is_set():
