@@ -94,7 +94,7 @@ class MockCamera:
         #         raise ValueError("error en camara")
         # self.f = False
         rv = _np.random.poisson(
-            2.5,
+            16.5,
             (
                 self.max_x,
                 self.max_y,
@@ -119,7 +119,7 @@ class MockCamera:
             slicex = slice(max(cx - slice_size, 0), min(cx + slice_size, self.max_x))
             slicey = slice(max(cy - slice_size, 0), min(cy + slice_size, self.max_y))
             rv[slicex, slicey] += gaussian2D(
-                self.grid[:, slicex, slicey], 550, x0, y0, self.sigma / self._nmpp_x, 0
+                self.grid[:, slicex, slicey], 200, x0, y0, self.sigma / self._nmpp_x, 0
             )
 
         # Z mocking: triangular wave
@@ -134,7 +134,7 @@ class MockCamera:
         slicex = slice(max(cx - slice_size, 0), min(cx + slice_size, self.max_x))
         slicey = slice(max(cy - slice_size, 0), min(cy + slice_size, self.max_y))
         rv[slicex, slicey] += gaussian2D(  # use X coordinate nmpp, since it maps OK
-            self.grid[:, slicex, slicey], 550, r[0], r[1], self.sigma / self._nmpp_x, 0
+            self.grid[:, slicex, slicey], 200, r[0], r[1], self.sigma / self._nmpp_x, 0
         )
         return rv.astype(_np.uint16)
 
@@ -163,10 +163,10 @@ class MockPiezo:
     def __init__(self, camera=None):
         self._camera = camera
 
-    def get_positions(self):
+    def get_position(self):
         return tuple(self._pos)
 
-    def set_positions(self, x: float, y: float, z: float):
+    def set_position(self, x: float, y: float, z: float):
         npos = _np.array((x, y, z,), dtype=float)
         if self._camera:
             self._camera.shift(

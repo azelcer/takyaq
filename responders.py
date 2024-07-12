@@ -10,7 +10,9 @@ localization event
 
 import numpy as _np
 import logging as _lgn
-from typing import Optional as _Optional
+from typing import Optional as _Optional, Union as _Union
+from collections.abc import Collection as _Collection
+from numbers import Number as _Number
 
 _lgn.basicConfig()
 _lgr = _lgn.getLogger(__name__)
@@ -19,6 +21,11 @@ _lgr.setLevel(_lgn.DEBUG)
 
 class BaseReactor:
     """Simple Reactor. Basically a proportional response."""
+
+    _multiplier = 1.0
+
+    def __init__(self, multiplier: float = 1.):
+        self._multiplier = multiplier
 
     def reset_xy(self, n_xy_rois: int):
         """Initialize all neccesary internal structures.
@@ -54,17 +61,33 @@ class BaseReactor:
             _lgr.warning("y shift is NAN")
             y_shift = 0.0
 
-        return -x_shift, -y_shift, z_shift
+        return (-x_shift * self._multiplier, -y_shift * self._multiplier,
+                z_shift * self._multiplier)
 
 
 class PIReactor:
     """PI Reactor. Proportional Integral."""
 
-    _Kp = _np.ones((3,)) * .85
-    _Ki = _np.ones((3,)) * .50
+    _Kp = _np.ones((3,))
+    _Ki = _np.ones((3,))
     _cum = _np.zeros((3,))
     _invert = _np.array([-1, -1, 1])
     lasttime = 0
+
+    def __init__(self, Kp: float | _Collection[float] = 1.,
+                 Ki: float | _Collection[float] = 1.):
+        if isinstance(Kp, _Number):
+            self._Kp[:] = float(Kp)
+        elif len(Kp) == 3:
+            self._Kp[:] = [float(_) for _ in Kp]
+        else:
+            raise TypeError(f"Invalid parameter used as Kp: {Kp}")
+        if isinstance(Ki, _Number):
+            self._Ki[:] = float(Kp)
+        elif len(Ki) == 3:
+            self._Ki[:] = [float(_) for _ in Ki]
+        else:
+            raise TypeError(f"Invalid parameter used as Ki: {Ki}")
 
     def reset_xy(self, n_xy_rois: int):
         """Initialize all neccesary internal structures."""
@@ -89,12 +112,12 @@ class PIReactor:
             x_shift = y_shift = 0.0
         else:
             x_shift, y_shift = _np.nanmean(xy_shifts, axis=0)
-        if x_shift is _np.nan:
-            _lgr.warning("x shift is NAN")
-            x_shift = 0.0
-        if y_shift is _np.nan:
-            _lgr.warning("y shift is NAN")
-            y_shift = 0.0
+            if x_shift is _np.nan:
+                _lgr.warning("x shift is NAN")
+                x_shift = 0.0
+            if y_shift is _np.nan:
+                _lgr.warning("y shift is NAN")
+                y_shift = 0.0
 
         error = _np.array((x_shift, y_shift, z_shift))
         if not self.lasttime:
@@ -115,7 +138,7 @@ class PIDReactor:
     _last_e = _np.zeros((3,))
     _cum = _np.zeros((3,))
     _N_VALS = 5
-    next_val =  0
+    next_val = 0
     _last_deriv = _np.full((_N_VALS, 3,), _np.nan)
     _invert = _np.array([-1, -1, 1])
     lasttime = 0.
