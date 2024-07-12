@@ -2,15 +2,17 @@
 """
 Sample PyQT frontend for Takyaq.
 
-Uses a mocked camera and piezo motor: replace those parts with real interfaces to use.
+Uses a mocked camera and piezo motor: replace those parts with real interfaces
+to have a fully functional stabilization program.
+
 Use:
     - Set the parameters:
          - nm per pixel XY
          - nm per pixel Z
     - Create XY ROIS and move and size them to encompass the fiducial marks
     - Create a Z ROI and move and size them to encompass the beam reflection
-    - Start tracking of XY and Z rois. While tracking is active, erasing or changing
-    the ROIs positions has no effect.
+    - Start tracking of XY and Z rois. While tracking is active, erasing or
+    changing the ROIs positions has no effect.
     - Start correction of XY and Z positions.
 
 """
@@ -38,9 +40,11 @@ from responders import BaseReactor, PIReactor, PIDReactor
 from mocks import MockCamera, MockPiezo
 
 _lgr = _lgn.getLogger(__name__)
+_lgr.setLevel(_lgn.DEBUG)
 
 
-def pgROI2AZROI(roi: pg.ROI):
+
+def qtROI2Limits(roi: pg.ROI):
     x, y = roi.pos()
     w, h = roi.size()
     return ROI(x, x + w, y, y + h)
@@ -103,6 +107,7 @@ _CAMERA_Z_NMPPX = 10
 
 # Globals (should go into a configuration file)
 _MAX_POINTS = 200
+_SAVE_PERIOD = 200  # for now, must be <= _MAX_POINTS
 _XY_ROI_SIZE = 60
 _Z_ROI_SIZE = 100
 
@@ -116,7 +121,8 @@ class Frontend(QFrame):
     _t_data = np.full((_MAX_POINTS,), np.nan)
     _z_data = np.full((_MAX_POINTS,), np.nan)
     _x_data = np.full((_MAX_POINTS, 0), np.nan)
-    _counter = 0
+    _graph_pos = 0  # for graphics and statistics
+    _save_pos = 0
 
     _x_plots = []
     _y_plots = []
@@ -153,7 +159,7 @@ class Frontend(QFrame):
         self.reset_z_data_buffers()
         self._est = Stabilizer(
             self._camera, self._piezo, _CAMERA_X_NMPPX, _CAMERA_Z_NMPPX, np.pi/4,
-            BaseReactor(), self._cbojt.cb
+            PIReactor(1, 0.3), self._cbojt.cb
         )
         self._t0 = _time.time()
         self._est.start()
@@ -165,7 +171,8 @@ class Frontend(QFrame):
         """
         self._I_data = np.full((_MAX_POINTS,), np.nan)
         self._t_data = np.full((_MAX_POINTS,), np.nan)
-        self._counter = 0
+        self._graph_pos = 0
+        self._save_pos = 0
         self._t0 = _time.time()
 
     def reset_xy_data_buffers(self, roi_len: int):
@@ -269,7 +276,7 @@ class Frontend(QFrame):
                 _lgr.warning("We need a Z ROI to init tracking")
                 self.trackZBox.setCheckState(Qt.CheckState.Unchecked)
                 return
-            self._est.set_z_roi(pgROI2AZROI(self._z_ROI))
+            self._est.set_z_roi(qtROI2Limits(self._z_ROI))
             self.reset_z_data_buffers()
             if not self._xy_tracking_enabled:
                 self.reset_data_buffers()
@@ -311,7 +318,7 @@ class Frontend(QFrame):
             self.reset_xy_data_buffers(len(self._roilist))
             if not self._z_tracking_enabled:
                 self.reset_data_buffers()
-            self._est.set_xy_rois([pgROI2AZROI(roi) for roi in self._roilist])
+            self._est.set_xy_rois([qtROI2Limits(roi) for roi in self._roilist])
             self._est.set_xy_tracking(True)
             self._xy_tracking_enabled = True
 
@@ -345,7 +352,10 @@ class Frontend(QFrame):
     def get_data(self, t: float, img: np.ndarray, z: float, xy_shifts: np.ndarray):
         """Receive data from the stabilizer and graph it."""
         # Ver si grabar
-        if self._counter >= _MAX_POINTS:  # roll o grabar
+        if self._save_pos >= _SAVE_PERIOD:  # y grabar activado
+            _lgr.info("GRABAR")
+            self._save_pos = 0
+        if self._graph_pos >= _MAX_POINTS:  # roll
             self._t_data[0:-1] = self._t_data[1:]
             self._I_data[0:-1] = self._I_data[1:]
             if self._z_tracking_enabled:
@@ -353,25 +363,25 @@ class Frontend(QFrame):
             if self._xy_tracking_enabled and xy_shifts.shape[0]:
                 self._x_data[0:-1] = self._x_data[1:]
                 self._y_data[0:-1] = self._y_data[1:]
-            self._counter -= 1
+            self._graph_pos -= 1
 
         # manage image data
         self.img.setImage(img, autoLevels=self.lastimage is None)
         self.lastimage = img
-        self._I_data[self._counter] = np.average(img)
-        self._t_data[self._counter] = t
-        t_data = self._t_data[: self._counter + 1] - self._t0
-        self.avgIntCurve.setData(t_data, self._I_data[: self._counter + 1])
+        self._I_data[self._graph_pos] = np.average(img)
+        self._t_data[self._graph_pos] = t
+        t_data = self._t_data[: self._graph_pos + 1] - self._t0
+        self.avgIntCurve.setData(t_data, self._I_data[: self._graph_pos + 1])
 
         # manage tracking data
         if self._z_tracking_enabled:
-            self._z_data[self._counter] = z
+            self._z_data[self._graph_pos] = z
             # update reports
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                self.zstd_value.setText(f"{np.nanstd(self._z_data[:self._counter]):.2f}")
+                self.zstd_value.setText(f"{np.nanstd(self._z_data[:self._graph_pos]):.2f}")
             # update Graphs
-            z_data = self._z_data[: self._counter + 1]
+            z_data = self._z_data[: self._graph_pos + 1]
             self.zCurve.setData(t_data, z_data)
             try:  # It is possible to have all NANs data
                 hist, bin_edges = np.histogram(z_data, bins=30)
@@ -382,22 +392,22 @@ class Frontend(QFrame):
                 ...
 
         if self._xy_tracking_enabled and xy_shifts.shape[0]:
-            self._x_data[self._counter] = xy_shifts[:, 0]
-            self._y_data[self._counter] = xy_shifts[:, 1]
+            self._x_data[self._graph_pos] = xy_shifts[:, 0]
+            self._y_data[self._graph_pos] = xy_shifts[:, 1]
             # t_data = np.copy(t_data)
 
-            x_data = self._x_data[: self._counter + 1]
-            y_data = self._y_data[: self._counter + 1]
+            x_data = self._x_data[: self._graph_pos + 1]
+            y_data = self._y_data[: self._graph_pos + 1]
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 x_mean = np.nanmean(x_data, axis=1)
                 y_mean = np.nanmean(y_data, axis=1)
                 # update reports
                 self.xstd_value.setText(
-                    f"{np.nanstd(self._x_data[:self._counter + 1]):.2f}"
+                    f"{np.nanstd(self._x_data[:self._graph_pos + 1]):.2f}"
                 )
                 self.ystd_value.setText(
-                    f"{np.nanstd(self._y_data[:self._counter + 1]):.2f}"
+                    f"{np.nanstd(self._y_data[:self._graph_pos + 1]):.2f}"
                 )
             # update Graphs
             for i, p in enumerate(self._x_plots):
@@ -407,7 +417,8 @@ class Frontend(QFrame):
                 p.setData(t_data, y_data[:, i])
             self.ymeanCurve.setData(t_data, y_mean)
             self.xyDataItem.setData(x_mean, y_mean)
-        self._counter += 1
+        self._graph_pos += 1
+        self._save_pos += 1
 
     def setup_gui(self):
         """Create and lay out all GUI objects."""
