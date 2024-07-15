@@ -43,7 +43,6 @@ _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
 
 
-
 def qtROI2Limits(roi: pg.ROI):
     x, y = roi.pos()
     w, h = roi.size()
@@ -85,7 +84,7 @@ class GroupedCheckBoxes:
 
 
 class QReader(QObject):
-    """Helper class to send data from stabilizar to GUI.
+    """Helper class to send data from stabilizar to Qt GUI.
 
     Implements a method that receives a PointInfo object. This is how the
     stabilizer thread reports the last data.
@@ -110,6 +109,20 @@ _MAX_POINTS = 200
 _SAVE_PERIOD = 200  # for now, must be <= _MAX_POINTS
 _XY_ROI_SIZE = 60
 _Z_ROI_SIZE = 100
+
+# Mock camera, replace with a real one
+_camera = MockCamera(
+    _CAMERA_X_NMPPX,
+    _CAMERA_Y_NMPPX,
+    _CAMERA_Z_NMPPX,
+    _CAMERA_X_NMPPX * 17,  # en pixeles
+    np.pi/4,
+    1,  # Center position noise in pixels
+    10,
+)
+
+# Mock piezo motor, replace with your own
+_piezo = MockPiezo(_camera)
 
 
 class Frontend(QFrame):
@@ -139,18 +152,8 @@ class Frontend(QFrame):
         super().__init__(*args, **kwargs)
 
         self.setup_gui()
-        # Mock camera, replace with a real one
-        self._camera = MockCamera(
-            _CAMERA_X_NMPPX,
-            _CAMERA_Y_NMPPX,
-            _CAMERA_Z_NMPPX,
-            _CAMERA_X_NMPPX * 7, # en pixeles
-            np.pi/4,
-            1,  # Center position noise in pixels
-            10,
-        )
-        # Mock piezo motor, replace with your own
-        self._piezo = MockPiezo(self._camera)
+        self._camera = _camera
+        self._piezo = _piezo
         # Callback object
         self._cbojt = QReader()
         self._cbojt.new_data.connect(self.get_data)
