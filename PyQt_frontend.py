@@ -165,7 +165,7 @@ class Frontend(QFrame):
             PIReactor(1, 0.3), self._cbojt.cb
         )
         self._t0 = _time.time()
-        self._est.start()
+        self._est.start_loop()
 
     def reset_data_buffers(self):
         """Reset data buffers unrelated to localization.
@@ -615,7 +615,7 @@ class Frontend(QFrame):
     def closeEvent(self, *args, **kwargs):
         """Shut down stabilizer on exit."""
         super().closeEvent(*args, **kwargs)
-        self._est.stop()
+        self._est.stop_loop()
 
 
 if __name__ == "__main__":

@@ -92,12 +92,13 @@ class PIReactor:
     def reset_xy(self, n_xy_rois: int):
         """Initialize all neccesary internal structures."""
         self._cum[0:2] = 0.
-        pass
+        self.lasttime = 0
+        # TODO: See how to manage lasttime z and XY
 
     def reset_z(self):
         """Initialize all neccesary internal structures."""
         self._cum[2] = 0.
-        pass
+        self.lasttime = 0
 
     def response(self, t: float, xy_shifts: _Optional[_np.ndarray], z_shift: float):
         """Process a mesaurement of the displacements.
