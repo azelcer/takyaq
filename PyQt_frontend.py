@@ -164,6 +164,7 @@ class Frontend(QFrame):
             self._camera, self._piezo, _CAMERA_X_NMPPX, _CAMERA_Z_NMPPX, np.pi/4,
             PIReactor(1, 0.3), self._cbojt.cb
         )
+        self._est.set_min_period(0.15)
         self._t0 = _time.time()
         self._est.start_loop()
 

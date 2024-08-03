@@ -11,7 +11,6 @@ from classes import ROI, PointInfo
 from loop import StabilizerThread as _ST
 
 
-
 _lgr = _lgn.getLogger(__name__)
 
 

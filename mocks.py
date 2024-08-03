@@ -119,7 +119,7 @@ class MockCamera:
             slicex = slice(max(cx - slice_size, 0), min(cx + slice_size, self.max_x))
             slicey = slice(max(cy - slice_size, 0), min(cy + slice_size, self.max_y))
             rv[slicex, slicey] += gaussian2D(
-                self.grid[:, slicex, slicey], 200, x0, y0, self.sigma / self._nmpp_x, 0
+                self.grid[:, slicex, slicey], 100, x0, y0, self.sigma / self._nmpp_x, 0
             )
 
         # Z mocking: triangular wave
@@ -134,7 +134,7 @@ class MockCamera:
         slicex = slice(max(cx - slice_size, 0), min(cx + slice_size, self.max_x))
         slicey = slice(max(cy - slice_size, 0), min(cy + slice_size, self.max_y))
         rv[slicex, slicey] += gaussian2D(  # use X coordinate nmpp, since it maps OK
-            self.grid[:, slicex, slicey], 200, r[0], r[1], self.sigma / self._nmpp_x, 0
+            self.grid[:, slicex, slicey], 100, r[0], r[1], self.sigma / self._nmpp_x, 0
         )
         return rv.astype(_np.uint16)
 

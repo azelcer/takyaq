@@ -3,7 +3,7 @@
 Estabilizador
 
 Separamos xy y z para estar listos.
-Agn'ostico de GUIs'
+Agnóstico de GUIs'
 """
 
 import numpy as _np
@@ -23,7 +23,7 @@ _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
 
 
-def gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
+def _gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
     """Generate a 2D gaussian.
 
     Parameters
@@ -52,7 +52,7 @@ def gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
     return G
 
 
-def gaussian_fit(data: _np.ndarray, x_max: float, y_max: float,
+def _gaussian_fit(data: _np.ndarray, x_max: float, y_max: float,
                  sigma: float) -> tuple[float, float, float]:
     """Fit a gaussian to an image.
 
@@ -91,7 +91,7 @@ def gaussian_fit(data: _np.ndarray, x_max: float, y_max: float,
         v_min = data.min()
         v_max = data.max()
         args = (v_max - v_min, x_max, y_max, sigma, v_min)
-        popt, pcov = _sp.optimize.curve_fit(gaussian2D, xdata, data.ravel(), p0=args)
+        popt, pcov = _sp.optimize.curve_fit(_gaussian2D, xdata, data.ravel(), p0=args)
     except Exception as e:
         _lgr.warning("Error fiting: %s, %s", e, type(e))
         return _np.nan, _np.nan, _np.nan
@@ -101,14 +101,17 @@ def gaussian_fit(data: _np.ndarray, x_max: float, y_max: float,
 class StabilizerThread(_th.Thread):
     """Wraps a stabilization thread."""
 
+    # Status flags
     _xy_tracking: bool = False
     _z_tracking: bool = False
     _xy_stabilization: bool = False
     _z_stabilization: bool = False
+    # ROIS from the user
     _xy_rois: _np.ndarray = None  # [ [min, max]_x, [min, max]_y] * n_rois
     _z_roi = None  # min/max x, min/max y
     _last_image: _np.ndarray = _np.empty((50, 50))
     _pos = _np.zeros((3,))  # current position in nm
+    _period = 0.150  # minumum loop time in seconds
 
     def __init__(
         self, camera, piezo, nmpp_xy: float, nmpp_z: float, z_ang: float,
@@ -122,7 +125,8 @@ class StabilizerThread(_th.Thread):
             Camera. Must implement a method called `get_image`, that returns
             a 2d numpy.ndarray representing the image
         piezo:
-            Piezo controller. Must implement a method called
+            Piezo controller. Must implement a method called `set_position` that
+            accepts x, y and z positions
         nmpp_xy: float
             nanometers in XY plane per camera pixel
         nmpp_z: float
@@ -132,7 +136,8 @@ class StabilizerThread(_th.Thread):
         corrector:
             object that provides a response
         callback: Callable
-            Callable to report measured shifts
+            Callable to report measured shifts. Will receive a `PointInfo`
+            object as the only parameter
         """
         super().__init__(*args, **kwargs)
 
@@ -151,6 +156,7 @@ class StabilizerThread(_th.Thread):
         self._piezo = piezo
         self._stop_event = _th.Event()
         self._stop_event.set()
+        # FIXME: ROI setting and tracking are coupled, and names are mixed up
         self._xy_track_event = _th.Event()
         self._xy_track_event.set()
         self._z_roi_OK_event = _th.Event()
@@ -158,6 +164,34 @@ class StabilizerThread(_th.Thread):
         self._calibrate_event = _th.Event()
         self._rsp = corrector
         self._cb = callback
+
+    def set_log_level(self, loglevel: int):
+        if loglevel < 0:
+            _lgr.warning("Invalid log level asked: %s", loglevel)
+        else:
+            _lgr.setLevel(loglevel)
+
+    def set_min_period(self, period: float):
+        """Set minimum period between position adjustments.
+
+        Parameters
+        ----------
+        period: float
+            Minimum period, in seconds.
+
+        The period is not precise, and might be longer than asked for if the
+        time needed to locate the stage real position takes too long.
+
+        The thread always sleeps for at least 10 ms, in order to let other
+        threads run.
+
+        Raises
+        ------
+        ValuError if requested period is negative
+        """
+        if period < 0:
+            raise ValueError(f"Period can not be negative ({period})")
+        self._period = period
 
     def set_xy_rois(self, rois: list[ROI]) -> bool:
         """Set ROIs for xy stabilization.
@@ -301,8 +335,8 @@ class StabilizerThread(_th.Thread):
             _lgr.warning("Invalid calibration direction: %s", direction)
             return False
 
-        # no match yet (we support python 3.9), so dirty trick
-        self._calib_idx  = {'x': 0, 'y': 1, 'z': 2}[direction]
+        # no `match` yet (we support python 3.9), so do a dirty trick
+        self._calib_idx = {'x': 0, 'y': 1, 'z': 2}[direction]
         self._calibrate_event.set()
 
     def set_z_stabilization(self, enabled: bool) -> bool:
@@ -320,7 +354,7 @@ class StabilizerThread(_th.Thread):
         # prime pool for responsiveness (a _must_ on windows).
         nproc = _os.cpu_count()
         params = [[_np.eye(3)] * nproc, [1.] * nproc, [1.] * nproc, [1.] * nproc]
-        _ = tuple(self._executor.map(gaussian_fit, *params))
+        _ = tuple(self._executor.map(_gaussian_fit, *params))
         self._stop_event.clear()
         self.start()
         return True
@@ -354,9 +388,9 @@ class StabilizerThread(_th.Thread):
         x = self._last_params['x']
         y = self._last_params['y']
         s = self._last_params['s']
-        locs = _np.array(tuple(self._executor.map(gaussian_fit, trimmeds, x, y, s)))
+        locs = _np.array(tuple(self._executor.map(_gaussian_fit, trimmeds, x, y, s)))
         self._last_params['x'] = locs[:, 0]
-        nanloc = _np.isnan(locs[:, 0])  # if x is nan, all are nan
+        nanloc = _np.isnan(locs[:, 0])  # if x is nan, y also is nan
         self._last_params['x'][nanloc] = x[nanloc]
         self._last_params['y'] = locs[:, 1]
         self._last_params['y'][nanloc] = y[nanloc]
@@ -524,7 +558,7 @@ class StabilizerThread(_th.Thread):
     def run(self):
         """Run main stabilization loop."""
         # TODO: let delay be configurable
-        DELAY = .2
+        DELAY = self._period
         initial_xy_positions = None
         initial_z_position = None
         while not self._stop_event.is_set():
