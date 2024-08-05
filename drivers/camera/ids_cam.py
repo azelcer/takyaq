@@ -31,8 +31,10 @@ FPS_LIMIT = 30
 
 
 class IDS_U3:
+    """IDS Camera."""
 
     def __init__(self):
+        """Init Camera."""
         self.__device = None
         self.__nodemap_remote_device = None
         self.__datastream = None
@@ -99,6 +101,10 @@ class IDS_U3:
                 # Userset is not available
                 _lgr.info("UserSet not available")
                 pass
+            # FIXME: Test para pasar a triggered
+            self.__nodemap_remote_device.FindNode("TriggerSelector").SetCurrentEntry("ExposureStart")
+            self.__nodemap_remote_device.FindNode("TriggerSource").SetCurrentEntry("Software")
+            self.__nodemap_remote_device.FindNode("TriggerMode").SetCurrentEntry("On")
             # Setting exposure time
             min_exposure_time = 0
             max_exposure_time = 0
@@ -265,10 +271,7 @@ class IDS_U3:
         return True
 
     def stop_acquisition(self):
-        """
-        Stop acquisition timer and stop acquisition on camera
-        :return:
-        """
+        """Stop acquisition."""
         # Check that a device is opened and that the acquisition is running. If not, return.
         if self.__device is None or self.__acquisition_running is False:
             return
@@ -296,9 +299,12 @@ class IDS_U3:
             print("Exception", str(e))
 
     def on_acquisition_timer(self):
+        """Acquire an image."""
         if not self.__datastream:
             raise ValueError("No datastream opened")
         try:
+            # FIXME: test para triggered
+            self.__nodemap_remote_device.FindNode("TriggerSoftware").Execute()
             # Get buffer from device's DataStream. Wait 5000 ms. The buffer is
             # automatically locked until it is queued again.
             # Get buffer from device's datastream
@@ -353,3 +359,4 @@ if __name__ == '__main__':
     image = device.on_acquisition_timer()
     end = time.perf_counter()
     print("Time on_acquisition_timer execution: ", end-start)
+    device.destroy_all()

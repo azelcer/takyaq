@@ -79,7 +79,7 @@ def _prepare_simplemove(x: float, y: float, z: float, n_pixels_x: int = 128,
 
 def simple_move(x: float, y: float, z: float, n_pixels_x: int = 128,
                 n_pixels_y: int = 128, n_pixels_z: int = 128, pixeltime=2000):
-    """Se mueve sueavemente a la posición pedida"""
+    """Mueve sueavemente a la posición pedida."""
     if _Z_ACTUATOR_RUNNING or _XY_ACTUATOR_RUNNING:
         # _lgr.warning("No puedo moverme con el actuador andando")
         return
@@ -88,18 +88,28 @@ def simple_move(x: float, y: float, z: float, n_pixels_x: int = 128,
 
 
 def get_current_position():
+    """Return the (registered) current position."""
     return tuple(_ADwin2um((_adw.Get_FPar(par))) for par in
                  (_X_CURRENT_FPAR, _Y_CURRENT_FPAR, _Z_CURRENT_FPAR))
 
 
 def select_scan_type(scantype: ScanType):
+    """Select scan type: xy, xz or yz."""
     fast, slow = scantype.value
     _adw.Set_FPar(_FAST_DIR_PAR, fast)
     _adw.Set_FPar(_SLOW_DIR_PAR, slow)
 
 
-def start_z_actuator():
+def start_z_actuator(pixel_time: int = 1000):
+    """Start Z actuator.
+
+    Parameter
+    ---------
+    pixeltime: int (optional, default=1000)
+        minimum time between adjustments in µs
+    """
     global _Z_ACTUATOR_RUNNING
+    _adw.Set_FPar(_Z_ACTUATOR_TIME, _us2A(pixel_time))
     if not _Z_ACTUATOR_RUNNING:
         _adw.Start_Process(_Processes.ACTUATOR_Z)
         _Z_ACTUATOR_RUNNING = True
@@ -112,8 +122,16 @@ def stop_z_actuator():
         _Z_ACTUATOR_RUNNING = False
 
 
-def start_xy_actuator():
+def start_xy_actuator(pixel_time: int = 1000):
+    """Start XY actuator.
+
+    Parameter
+    ---------
+    pixeltime: int (optional, default=1000)
+        minimum time between adjustments in µs
+    """
     global _XY_ACTUATOR_RUNNING
+    _adw.Set_FPar(_XY_ACTUATOR_TIME, _us2A(pixel_time))
     if not _XY_ACTUATOR_RUNNING:
         _adw.Start_Process(_Processes.ACTUATOR_XY)
         _XY_ACTUATOR_RUNNING = True
@@ -125,6 +143,20 @@ def stop_xy_actuator():
         _adw.Stop_Process(_Processes.ACTUATOR_XY)
         _XY_ACTUATOR_RUNNING = False
 
+
+def scan_line():
+    _adw.Start_Process(_Processes.LINE_SCAN)
+    line_time = (1/1000) * self.data_t[-1]  # target linetime in ms
+    wait_time = line_time * 1.05 # TO DO: optimize this, it should work with 1.00, or maybe even less?
+                                 # it should even work without the time.sleep()
+    time.sleep(wait_time/1000) # in s
+    # while _adw.Process_Status:
+    #     sleep
+    line_data = self.adw.GetData_Long(1, 0, self.tot_pixels)
+
+    # line_data[0] = 0  # TO DO: fix the high count error on first element
+
+    return line_data
 
 # TODO: implementar escaneos
     # self.adw.Set_Par(1, self.tot_pixels)

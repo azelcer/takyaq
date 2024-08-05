@@ -38,6 +38,25 @@ import logging as _lgn
 from estabilizador import Stabilizer, PointInfo, ROI
 from responders import BaseReactor, PIReactor, PIDReactor
 from mocks import MockCamera, MockPiezo
+import drivers.camera.ids_cam as ids_cam
+import drivers.ADWin.piezo as piezo_driver
+
+
+class Piezo:
+    """Piezo motor wrapping ADwin."""
+
+    def get_position(self):
+        """Return curent position in nm."""
+        return (_*1000 for _ in piezo_driver.get_current_position())
+
+    def set_position(self, x: float, y: float, z: float):
+        """Move to specified position, in nm.
+
+        Should use actuator.
+        """
+        piezo_driver.simple_move(x, y, z, 5, 5, 5, 1000)
+        return
+
 
 _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
@@ -110,23 +129,20 @@ _SAVE_PERIOD = 200  # for now, must be <= _MAX_POINTS
 _XY_ROI_SIZE = 60
 _Z_ROI_SIZE = 100
 
-# Mock camera, replace with a real one
-_camera = MockCamera(
-    _CAMERA_X_NMPPX,
-    _CAMERA_Y_NMPPX,
-    _CAMERA_Z_NMPPX,
-    _CAMERA_X_NMPPX * 17,  # en pixeles
-    np.pi/4,
-    1,  # Center position noise in pixels
-    10,
-)
-
-# Mock piezo motor, replace with your own
-_piezo = MockPiezo(_camera)
+# # Mock camera, replace with a real one
+# _camera = MockCamera(
+#     _CAMERA_X_NMPPX,
+#     _CAMERA_Y_NMPPX,
+#     _CAMERA_Z_NMPPX,
+#     _CAMERA_X_NMPPX * 17,  # en pixeles
+#     np.pi/4,
+#     1,  # Center position noise in pixels
+#     10,
+# )
 
 
 class Frontend(QFrame):
-    """PyQt Frontend for Takyq.
+    """PyQt Frontend for Takyaq.
 
     Implemented as a QFrame so it can be easily integrated within a larger app.
     """
@@ -147,13 +163,13 @@ class Frontend(QFrame):
     _z_locking_enabled: bool = False
     _xy_locking_enabled: bool = False
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, camera, piezo, *args, **kwargs):
         """Init Frontend."""
         super().__init__(*args, **kwargs)
 
         self.setup_gui()
-        self._camera = _camera
-        self._piezo = _piezo
+        self._camera = camera
+        self._piezo = piezo
         # Callback object
         self._cbojt = QReader()
         self._cbojt.new_data.connect(self.get_data)
@@ -164,7 +180,7 @@ class Frontend(QFrame):
             self._camera, self._piezo, _CAMERA_X_NMPPX, _CAMERA_Z_NMPPX, np.pi/4,
             PIReactor(1, 0.3), self._cbojt.cb
         )
-        self._est.set_min_period(0.15)
+        self._est.set_min_period(0.05)
         self._t0 = _time.time()
         self._est.start_loop()
 
@@ -620,13 +636,20 @@ class Frontend(QFrame):
 
 
 if __name__ == "__main__":
-    if not QApplication.instance():
-        app = QApplication([])
-    else:
-        app = QApplication.instance()
-    gui = Frontend()
+    camera = ids_cam.IDS_U3()
+    if not camera.open_device():
+        raise ValueError("Could not open camera")
+    try:
+        piezo = Piezo()
+        if not QApplication.instance():
+            app = QApplication([])
+        else:
+            app = QApplication.instance()
+        gui = Frontend(camera, piezo)
 
-    gui.setWindowTitle("Takyq with PyQt frontend")
-    gui.show()
-    app.exec_()
-    app.quit()
+        gui.setWindowTitle("Takyaq with PyQt frontend")
+        gui.show()
+        app.exec_()
+        app.quit()
+    finally:
+        camera.destroy_all()

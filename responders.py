@@ -74,8 +74,8 @@ class PIReactor:
     _invert = _np.array([-1, -1, 1])
     lasttime = 0
 
-    def __init__(self, Kp: float | _Collection[float] = 1.,
-                 Ki: float | _Collection[float] = 1.):
+    def __init__(self, Kp: _Union[float, _Collection[float]] = 1.,
+                 Ki: _Union[float, _Collection[float]] = 1.):
         if isinstance(Kp, _Number):
             self._Kp[:] = float(Kp)
         elif len(Kp) == 3:
@@ -186,6 +186,7 @@ class PIDReactor:
         self._last_e = error
         self.lasttime = t
         return rv * self._invert
+
 
 class PIDReactor2:
     """Modified PID Reactor. Proportional, short-time Integral, Derivative."""
