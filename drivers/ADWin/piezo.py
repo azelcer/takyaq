@@ -6,7 +6,7 @@ from enum import Enum as _Enum
 # TODO: create a manager object that keeps track of notification callbacks, etc.
 
 # Move parameters
-# FPAR of current positions (updated on all scipts)
+# FPAR of current positions (updated on all ADwin scripts but check scan_line)
 _X_CURRENT_FPAR = 70
 _Y_CURRENT_FPAR = 71
 _Z_CURRENT_FPAR = 72

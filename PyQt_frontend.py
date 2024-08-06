@@ -641,6 +641,9 @@ if __name__ == "__main__":
         raise ValueError("Could not open camera")
     try:
         piezo = Piezo()
+        piezo.set_position(10, 10, 10)
+        # piezo_driver.start_xy_actuator(500)
+        # piezo_driver.start_z_actuator(500)
         if not QApplication.instance():
             app = QApplication([])
         else:
@@ -653,3 +656,5 @@ if __name__ == "__main__":
         app.quit()
     finally:
         camera.destroy_all()
+        piezo_driver.stop_xy_actuator()
+        piezo_driver.stop_z_actuator()
