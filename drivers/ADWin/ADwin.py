@@ -82,9 +82,9 @@ class ADwin:
                         raise ADwinError('__init__', 'Could not read Registry.', 200)
             try:
                 if struct.calcsize("P") == 4:
-                    self.dll = ctypes.WinDLL('ADWIN32')
+                    self.dll = ctypes.WinDLL('ADWIN32', winmode=ctypes.RTLD_GLOBAL)
                 else:
-                    self.dll = ctypes.WinDLL('ADWIN64')
+                    self.dll = ctypes.WinDLL('ADWIN64', winmode=ctypes.RTLD_GLOBAL)
                 self.dll.DeviceNo = DeviceNo
             except:
                 raise ADwinError('__init__', 'ADwin-DLL not found.', 200)

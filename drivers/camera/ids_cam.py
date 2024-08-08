@@ -26,6 +26,7 @@ _lgn.basicConfig(level=_lgn.INFO,
                  format='%(asctime)s:%(name)s:%(levelname)s:%(message)s',
                  )
 _lgr = _lgn.getLogger(__name__)
+_lgr.setLevel(_lgn.DEBUG)
 
 FPS_LIMIT = 30
 
@@ -38,7 +39,7 @@ class IDS_U3:
         self.__device = None
         self.__nodemap_remote_device = None
         self.__datastream = None
-        # Variables de instancia relacionadas con laadquisición de imágenes
+        # Variables de instancia relacionadas con la adquisición de imágenes
         self.__display = None
         self.__error_counter = 0  # Contador del numero de errores
         self.__acquisition_running = False  # bandera para indicar si la adquisición está en curso.
@@ -139,6 +140,13 @@ class IDS_U3:
                 ds.FindNode("StreamBufferHandlingMode").SetCurrentEntry("NewestOnly")
             except Exception as e:
                 _lgr.error("Error seteando modo de buffering de la cámara: %s", e)
+            # self.alloc_and_announce_buffers()
+            if not self.set_roi(16, 16, 1920, 1200):
+                print("error setting ROI")
+                return
+            if not self.alloc_and_announce_buffers():
+                print("error with buffers")
+                return
             return True
         except ids_peak.Exception as e:
             _lgr.error("Exception %s: %s", type(e), str(e))
@@ -298,7 +306,7 @@ class IDS_U3:
         except Exception as e:
             print("Exception", str(e))
 
-    def on_acquisition_timer(self):
+    def get_image(self):
         """Acquire an image."""
         if not self.__datastream:
             raise ValueError("No datastream opened")
@@ -308,18 +316,18 @@ class IDS_U3:
             # Get buffer from device's DataStream. Wait 5000 ms. The buffer is
             # automatically locked until it is queued again.
             # Get buffer from device's datastream
-            buffer = self.__datastream.WaitForFinishedBuffer(5000)
+            buffer = self.__datastream.WaitForFinishedBuffer(500)
             ipl_image = ids_peak_ipl_extension.BufferToImage(buffer)
-            # PixelFormatName_Mono8???
-            converted_ipl_image = ipl_image.ConvertTo(ids_peak_ipl.PixelFormatName_BGRa8, ids_peak_ipl.ConversionMode_Fast)
-            print(type(converted_ipl_image))
+            # PixelFormatName_Mono8???  PixelFormatName_BGRa8
+            converted_ipl_image = ipl_image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono8, ids_peak_ipl.ConversionMode_Fast)
+            # print(type(converted_ipl_image))
             # Queue buffer again
             self.__datastream.QueueBuffer(buffer)
 
             # get_numpy_2D() ???
             # Get raw image data from converted image and construct a 3D array
-            self.image_np_array = converted_ipl_image.get_numpy_3D()
-            image_sum = self.image_np_array[:, :, 0]  # R channel
+            self.image_np_array = converted_ipl_image.get_numpy_2D()
+            image_sum = self.image_np_array#[:, :, 0]  # R channel
 
             # 2D array, each element is the sum of the R,G,B,A channels
             # image_sum = np.sum(self.image_np_array, axis=2)
@@ -354,9 +362,14 @@ if __name__ == '__main__':
         print("Big success")
     else:
         print("No device")
-    device.work()
-    start = time.perf_counter()
-    image = device.on_acquisition_timer()
-    end = time.perf_counter()
-    print("Time on_acquisition_timer execution: ", end-start)
-    device.destroy_all()
+        raise ValueError
+    # device.work()
+    if not device.start_acquisition():
+        print("cagamos")
+    try:
+        start = time.perf_counter()
+        image = device.get_image()
+        end = time.perf_counter()
+        print("Time on_acquisition_timer execution: ", end-start)
+    finally:
+        device.destroy_all()

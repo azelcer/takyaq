@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-from ADWin import (_adw, Processes as _Processes, microsec_to_ADwin as _us2A,
+from . import (_adw, Processes as _Processes, microsec_to_ADwin as _us2A,
                    um2ADwin as _um2ADwin, ADwin2um as _ADwin2um)
 from enum import Enum as _Enum
+import logging as _lgn
+_lgr = _lgn.getLogger(__name__)
 
 # TODO: create a manager object that keeps track of notification callbacks, etc.
 
@@ -56,14 +58,14 @@ class ScanType(_Enum):
 
 def _prepare_simplemove(x: float, y: float, z: float, n_pixels_x: int = 128,
                         n_pixels_y: int = 128, n_pixels_z: int = 128, pixeltime=2000):
-    """Setea los parámatros para mover a una posición x,y,z.
+    """Setea los parámetros para mover a una posición x,y,z.
 
     El movimiento se realiza en forma suave. para cada dirección se lleva a cabo
     en n_pixel pasos, de pixeltime µs cada uno. O sea que para los parámetros por
     defecto el movimiento lleva 2000 µs * 128 pasos = 256 ms
     """
     x_f = _um2ADwin(x)
-    y_f = _um2ADwin(z)
+    y_f = _um2ADwin(y)
     z_f = _um2ADwin(z)
 
     _adw.Set_Par(_X_STEPS_PAR, n_pixels_x)
@@ -79,12 +81,12 @@ def _prepare_simplemove(x: float, y: float, z: float, n_pixels_x: int = 128,
 
 def simple_move(x: float, y: float, z: float, n_pixels_x: int = 128,
                 n_pixels_y: int = 128, n_pixels_z: int = 128, pixeltime=2000):
-    """Mueve sueavemente a la posición pedida."""
+    """Mueve suavemente a la posición pedida."""
     if _Z_ACTUATOR_RUNNING or _XY_ACTUATOR_RUNNING:
         # _lgr.warning("No puedo moverme con el actuador andando")
         return
     _prepare_simplemove(x, y, z, n_pixels_x, n_pixels_y, n_pixels_z, pixeltime)
-    _adw.Start_Process(_Processes.MOVETO_XYZ)
+    _adw.Start_Process(_Processes.MOVETO_XYZ.value)
 
 
 def get_current_position():
@@ -111,7 +113,7 @@ def start_z_actuator(pixel_time: int = 1000):
     global _Z_ACTUATOR_RUNNING
     _adw.Set_FPar(_Z_ACTUATOR_TIME, _us2A(pixel_time))
     if not _Z_ACTUATOR_RUNNING:
-        _adw.Start_Process(_Processes.ACTUATOR_Z)
+        _adw.Start_Process(_Processes.ACTUATOR_Z.value)
         _Z_ACTUATOR_RUNNING = True
 
 
@@ -133,7 +135,7 @@ def start_xy_actuator(pixel_time: int = 1000):
     global _XY_ACTUATOR_RUNNING
     _adw.Set_FPar(_XY_ACTUATOR_TIME, _us2A(pixel_time))
     if not _XY_ACTUATOR_RUNNING:
-        _adw.Start_Process(_Processes.ACTUATOR_XY)
+        _adw.Start_Process(_Processes.ACTUATOR_XY.value)
         _XY_ACTUATOR_RUNNING = True
 
 
@@ -145,7 +147,7 @@ def stop_xy_actuator():
 
 
 def scan_line():
-    _adw.Start_Process(_Processes.LINE_SCAN)
+    _adw.Start_Process(_Processes.LINE_SCAN.value)
     line_time = (1/1000) * self.data_t[-1]  # target linetime in ms
     wait_time = line_time * 1.05 # TO DO: optimize this, it should work with 1.00, or maybe even less?
                                  # it should even work without the time.sleep()
@@ -193,3 +195,16 @@ def scan_line():
 #     trace_data = trace_data[1:]# TO DO: fix the high count error on first element
 
 #     return trace_data
+
+from multiprocessing import current_process
+
+if current_process().name == 'MainProcess':
+    pos_zero = _um2ADwin(0)
+    _lgr.error("reseteando")
+    _adw.Set_FPar(_X_CURRENT_FPAR, pos_zero)
+    _adw.Set_FPar(_Y_CURRENT_FPAR, pos_zero)
+    _adw.Set_FPar(_Z_CURRENT_FPAR, pos_zero)
+    # simple_move(0, 0, 0)
+    _lgr.error("reseteado")
+else:
+    _lgr.error("skip")

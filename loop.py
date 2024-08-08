@@ -53,7 +53,7 @@ def _gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
 
 
 def _gaussian_fit(data: _np.ndarray, x_max: float, y_max: float,
-                 sigma: float) -> tuple[float, float, float]:
+                  sigma: float) -> tuple[float, float, float]:
     """Fit a gaussian to an image.
 
     All data is in PIXEL units.

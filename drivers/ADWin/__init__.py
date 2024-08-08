@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os as _os
 from enum import Enum as _Enum
+from typing import Union as _Union
 import numpy as _np
 from . import ADwin
 
@@ -19,7 +20,7 @@ _ADWIN_TIME_UNIT = 300
 
 
 # Conversions
-def microsec_to_ADwin(t: float | _np.ndarray):
+def microsec_to_ADwin(t: _Union[float,  _np.ndarray]):
     "time in µs to ADwin time units of 3.33 ns"
     units = _np.array(t * _ADWIN_TIME_UNIT, dtype='int')
     return units
@@ -45,14 +46,14 @@ um_shift = -0.02  # shift fijo en µm. Es muy rato que sea igual para todos
 
 # TODO: protegerse contra entradas negativas.
 
-def um2ADwin(x: float | _np.ndarray) -> int:
+def um2ADwin(x: _Union[float, _np.ndarray]) -> int:
     """x en µm"""
     # TODO: ver si redondear
     rv = _np.array(((x - um_shift) / um_per_volt) * m_VtoU + q_VtoU, dtype='int')
     return rv
 
 
-def ADwin2um(x: int | _np.ndarray) -> float:
+def ADwin2um(x:_Union[int, _np.ndarray]) -> float:
     """rv en µm"""
     rv = _np.array(um_per_volt * (x - q_VtoU) / m_VtoU + um_shift)
     return rv
@@ -126,6 +127,8 @@ def _setupDevice(adw: ADwin.ADwin):
 
 
 # Initializtion
+from multiprocessing import current_process
 _DEVICENUMBER = 0x1
 _adw = ADwin.ADwin(_DEVICENUMBER, 1)  # TODO: Exportar este símbolo
-_setupDevice(_adw)
+if current_process().name == 'MainProcess':
+    _setupDevice(_adw)

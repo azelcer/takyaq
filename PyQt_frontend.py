@@ -47,14 +47,14 @@ class Piezo:
 
     def get_position(self):
         """Return curent position in nm."""
-        return (_*1000 for _ in piezo_driver.get_current_position())
+        return tuple(_*1000 for _ in piezo_driver.get_current_position())
 
     def set_position(self, x: float, y: float, z: float):
         """Move to specified position, in nm.
 
         Should use actuator.
         """
-        piezo_driver.simple_move(x, y, z, 5, 5, 5, 1000)
+        piezo_driver.simple_move(x*1E-3, y*1E-3, z*1E-3, 32, 32, 32, 500)
         return
 
 
@@ -119,9 +119,10 @@ class QReader(QObject):
 
 
 # Physical parameters specific for each setup (should go into a configuration file)
-_CAMERA_X_NMPPX = 23.5
-_CAMERA_Y_NMPPX = 23.5
-_CAMERA_Z_NMPPX = 10
+_CAMERA_X_NMPPX = 25
+_CAMERA_Y_NMPPX = 25
+_CAMERA_Z_NMPPX = 104
+_CAMERA_Z_ANGLE = 2.5
 
 # Globals (should go into a configuration file)
 _MAX_POINTS = 200
@@ -177,10 +178,10 @@ class Frontend(QFrame):
         self.reset_xy_data_buffers(len(self._roilist))
         self.reset_z_data_buffers()
         self._est = Stabilizer(
-            self._camera, self._piezo, _CAMERA_X_NMPPX, _CAMERA_Z_NMPPX, np.pi/4,
-            PIReactor(1, 0.3), self._cbojt.cb
+            self._camera, self._piezo, _CAMERA_X_NMPPX, _CAMERA_Z_NMPPX, _CAMERA_Z_ANGLE,
+            PIReactor(.5, 0.1), self._cbojt.cb,
         )
-        self._est.set_min_period(0.05)
+        self._est.set_min_period(0.100)
         self._t0 = _time.time()
         self._est.start_loop()
 
@@ -639,9 +640,13 @@ if __name__ == "__main__":
     camera = ids_cam.IDS_U3()
     if not camera.open_device():
         raise ValueError("Could not open camera")
+    if not camera.start_acquisition():
+        raise ValueError("Could not start camera")
     try:
         piezo = Piezo()
-        piezo.set_position(10, 10, 10)
+        piezo_driver.simple_move(10, 10, 10)
+        _time.sleep(1)
+        
         # piezo_driver.start_xy_actuator(500)
         # piezo_driver.start_z_actuator(500)
         if not QApplication.instance():

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from ADwin import _adw
+from . import _adw
 from enum import Enum as _Enum
 
 
