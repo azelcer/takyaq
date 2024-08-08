@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from . import (_adw, Processes as _Processes, microsec_to_ADwin as _us2A,
-                   um2ADwin as _um2ADwin, ADwin2um as _ADwin2um)
+               ADwin as _ADwin, um2ADwin as _um2ADwin, ADwin2um as _ADwin2um)
 from enum import Enum as _Enum
 import logging as _lgn
 _lgr = _lgn.getLogger(__name__)
@@ -196,15 +196,17 @@ def scan_line():
 
 #     return trace_data
 
-from multiprocessing import current_process
 
-if current_process().name == 'MainProcess':
+def init(adw: _ADwin.ADwin):
+    """Initialize nanoMax piezo."""
+
     pos_zero = _um2ADwin(0)
-    _lgr.error("reseteando")
-    _adw.Set_FPar(_X_CURRENT_FPAR, pos_zero)
-    _adw.Set_FPar(_Y_CURRENT_FPAR, pos_zero)
-    _adw.Set_FPar(_Z_CURRENT_FPAR, pos_zero)
-    # simple_move(0, 0, 0)
-    _lgr.error("reseteado")
-else:
-    _lgr.error("skip")
+    adw.Set_FPar(_X_CURRENT_FPAR, pos_zero)
+    adw.Set_FPar(_Y_CURRENT_FPAR, pos_zero)
+    adw.Set_FPar(_Z_CURRENT_FPAR, pos_zero)
+
+
+# Initializtion
+from multiprocessing import current_process
+if current_process().name == 'MainProcess':
+    init(_adw)

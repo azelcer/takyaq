@@ -3,8 +3,10 @@ import os as _os
 from enum import Enum as _Enum
 from typing import Union as _Union
 import numpy as _np
-from . import ADwin
+from . import ADwin as _ADwin
 
+
+# TODO: wrap this in an object and force initialization
 
 class Processes(_Enum):
     LINE_SCAN = 1  # single line scan
@@ -92,7 +94,7 @@ def convert(x, key):
         return value
 
 
-def _setupDevice(adw: ADwin.ADwin):
+def _setupDevice(adw: _ADwin.ADwin):
     """Load programs into adwin."""
 
     BTL = "ADwin11.btl"
@@ -126,9 +128,13 @@ def _setupDevice(adw: ADwin.ADwin):
     adw.Load_Process(process_7)
 
 
+def init(adw: _ADwin.ADwin):
+    _setupDevice(adw)
+
+
 # Initializtion
 from multiprocessing import current_process
 _DEVICENUMBER = 0x1
-_adw = ADwin.ADwin(_DEVICENUMBER, 1)  # TODO: Exportar este símbolo
+_adw = _ADwin.ADwin(_DEVICENUMBER, 1)  # TODO: Exportar este símbolo
 if current_process().name == 'MainProcess':
-    _setupDevice(_adw)
+    init(_adw)
