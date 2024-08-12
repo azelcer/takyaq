@@ -22,7 +22,7 @@ _ADWIN_TIME_UNIT = 300
 
 
 # Conversions
-def microsec_to_ADwin(t: _Union[float,  _np.ndarray]):
+def microsec_to_ADwin(t: _Union[float,  _np.ndarray]) -> _np.ndarray:
     "time in µs to ADwin time units of 3.33 ns"
     units = _np.array(t * _ADWIN_TIME_UNIT, dtype='int')
     return units
@@ -48,7 +48,7 @@ um_shift = -0.02  # shift fijo en µm. Es muy rato que sea igual para todos
 
 # TODO: protegerse contra entradas negativas.
 
-def um2ADwin(x: _Union[float, _np.ndarray]) -> int:
+def um2ADwin(x: _Union[float, _np.ndarray]) -> _np.ndarray:
     """x en µm"""
     # TODO: ver si redondear
     rv = _np.array(((x - um_shift) / um_per_volt) * m_VtoU + q_VtoU, dtype='int')
@@ -60,7 +60,7 @@ def ADwin2um(x:_Union[int, _np.ndarray]) -> float:
     rv = _np.array(um_per_volt * (x - q_VtoU) / m_VtoU + um_shift)
     return rv
 
-
+# TODO: terminar de desarmar esta funcion
 def convert(x, key):
     # ADC/DAC to Voltage parameters
     m_VtoU = (0x1 << 15) / 10  # in V^-1, sólo usamos media escala
@@ -132,7 +132,7 @@ def init(adw: _ADwin.ADwin):
     _setupDevice(adw)
 
 
-# Initializtion
+# Inicialización automática... encapsular en un objeto
 from multiprocessing import current_process
 _DEVICENUMBER = 0x1
 _adw = _ADwin.ADwin(_DEVICENUMBER, 1)  # TODO: Exportar este símbolo

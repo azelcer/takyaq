@@ -646,7 +646,7 @@ if __name__ == "__main__":
         piezo = Piezo()
         piezo_driver.simple_move(10, 10, 10)
         _time.sleep(1)
-        
+
         # piezo_driver.start_xy_actuator(500)
         # piezo_driver.start_z_actuator(500)
         if not QApplication.instance():
