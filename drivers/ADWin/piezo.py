@@ -70,17 +70,21 @@ class ScanType(_Enum):
 
 @_dataclass
 class ScanInfo:
+    """Intercambia (entrada/salida) informacion sobre un scan."""
     scan_range: float  # scan range in um
     n_pixels: int  # number of pixels on a scan side
     t_pixel: float  # time per pixel in us
     n_aux_pixels: int  # Numero de pixeles auxiliares para acelerar
-    a_aux: list = [1, 1, 1, 1]  # acelrecacion en cada segmento (poner valores razonables)
-    dy: float  # lado de un pixel, en um. OUTPUT?
-    # x_i (float): Posiciones iniciales en um.
-    # y_i (TYPE): DESCRIPTION.
-    # z_i (TYPE): DESCRIPTION.
+    a_aux: list  # aceleracion en cada segmento)
+    x_initial: float  # Posiciones iniciales en um.
+    y_initial: float  # Posiciones iniciales en um.
+    z_initial: float  # Posiciones iniciales en um.
     scantype: ScanType
     t_wait: float = 0.  # in us
+    # Output
+    px_size: float = None  # in um
+    n_waiting_pixels: int = None
+    n_pixels_total: int # (2 * self.NofPixels + 4 * self.NofAuxPixels + self.waiting_pixels)
 
 
 class Piezo:

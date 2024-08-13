@@ -561,6 +561,7 @@ class StabilizerThread(_th.Thread):
         DELAY = self._period
         initial_xy_positions = None
         initial_z_position = None
+        self._pos[:] = self._piezo.get_position()
         while not self._stop_event.is_set():
             lt = _time.monotonic()
             z_shift = 0.0
