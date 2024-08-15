@@ -45,16 +45,31 @@ import drivers.ADWin.piezo as piezo_driver
 class Piezo:
     """Piezo motor wrapping ADwin."""
 
+    def __init__(self, adwin_piezo: piezo_driver.Piezo):
+        self._driver = adwin_piezo
+
+    def start_actuators(self, t=500):
+        """Start actuators."""
+        self._driver.start_xy_actuator(t)
+        self._driver.start_z_actuator(t)
+
+    def stop_actuators(self):
+        """Stop actuators."""
+        self._driver.stop_xy_actuator()
+        self._driver.stop_z_actuator()
+
     def get_position(self):
         """Return curent position in nm."""
-        return tuple(_*1000 for _ in piezo_driver.get_current_position())
+        return tuple(_*1000 for _ in self._driver.get_current_position())
 
     def set_position(self, x: float, y: float, z: float):
         """Move to specified position, in nm.
 
         Should use actuator.
         """
-        piezo_driver.simple_move(x*1E-3, y*1E-3, z*1E-3, 32, 32, 32, 500)
+        self._driver.simple_move(x*1E-3, y*1E-3, z*1E-3, 32, 32, 32, 500)
+        # self._driver.actuator_xy_move(x*1E-3, y*1E-3)
+        # self._driver.actuator_z_move(z*1E-3)
         return
 
 
@@ -63,6 +78,7 @@ _lgr.setLevel(_lgn.DEBUG)
 
 
 def qtROI2Limits(roi: pg.ROI):
+    """Transform Qt ROIs to limits."""
     x, y = roi.pos()
     w, h = roi.size()
     return ROI(x, x + w, y, y + h)
@@ -642,13 +658,12 @@ if __name__ == "__main__":
         raise ValueError("Could not open camera")
     if not camera.start_acquisition():
         raise ValueError("Could not start camera")
+    adwin_piezo = piezo_driver.Piezo()
+    adwin_piezo.simple_move(10, 10, 10)
+    _time.sleep(.256)
     try:
-        piezo = Piezo()
-        piezo_driver.simple_move(10, 10, 10)
-        _time.sleep(1)
-
-        # piezo_driver.start_xy_actuator(500)
-        # piezo_driver.start_z_actuator(500)
+        piezo = Piezo(adwin_piezo)
+        # piezo.start_actuators()
         if not QApplication.instance():
             app = QApplication([])
         else:
@@ -659,7 +674,8 @@ if __name__ == "__main__":
         gui.show()
         app.exec_()
         app.quit()
+        piezo.stop_actuators()
     finally:
         camera.destroy_all()
-        piezo_driver.stop_xy_actuator()
-        piezo_driver.stop_z_actuator()
+        adwin_piezo.stop_xy_actuator()
+        adwin_piezo.stop_z_actuator()

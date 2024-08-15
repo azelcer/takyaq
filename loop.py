@@ -41,7 +41,6 @@ def _gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
     ravel: bool, default True
         If True, returns the raveled values, otherwise return a 2D array
     """
-
     x, y = grid
     x0 = float(x0)
     y0 = float(y0)
@@ -166,6 +165,7 @@ class StabilizerThread(_th.Thread):
         self._cb = callback
 
     def set_log_level(self, loglevel: int):
+        """Set log level for module."""
         if loglevel < 0:
             _lgr.warning("Invalid log level asked: %s", loglevel)
         else:
@@ -179,11 +179,11 @@ class StabilizerThread(_th.Thread):
         period: float
             Minimum period, in seconds.
 
-        The period is not precise, and might be longer than asked for if the
-        time needed to locate the stage real position takes too long.
+        The period is not precise, and might be longer than selected if the
+        time needed to locate the stage real position takes longer.
 
-        The thread always sleeps for at least 10 ms, in order to let other
-        threads run.
+        The thread always sleeps for at least 1 ms, in order to let other
+        threads run (see main loop).
 
         Raises
         ------
@@ -453,7 +453,7 @@ class StabilizerThread(_th.Thread):
 
         Runs it own small loop.
         moves around current position
-        TODO: Inform about XY coupling (camera rotation?)
+        TODO: Inform about XY coupling (camera-stage rotation?)
         WARNING: Z is handled separately
 
         Parameters
@@ -545,7 +545,7 @@ class StabilizerThread(_th.Thread):
             for x, y in zip(shifts, response):
                 print(f"{x}, {y}")
             vec, _ = _np.linalg.lstsq(_np.vstack([shifts, _np.ones(points)]).T,
-                                        response, rcond=None)[0]
+                                      response, rcond=None)[0]
             print("slope = ", 1/vec)
             print("nmpp z = ", _np.sum(1./vec**2)**.5)
             # watch out order
@@ -557,8 +557,6 @@ class StabilizerThread(_th.Thread):
 
     def run(self):
         """Run main stabilization loop."""
-        # TODO: let delay be configurable
-        DELAY = self._period
         initial_xy_positions = None
         initial_z_position = None
         self._pos[:] = self._piezo.get_position()
@@ -569,9 +567,15 @@ class StabilizerThread(_th.Thread):
             if self._calibrate_event.is_set():
                 _lgr.debug("Calibration event received")
                 if self._calib_idx >= 0 and self._calib_idx < 2:
-                    self._calibrate_xy(50., initial_xy_positions)
+                    if self._xy_tracking:
+                        self._calibrate_xy(50., initial_xy_positions)
+                    else:
+                        _lgr.warning("can not calibrate XY without tracking")
                 elif self._calib_idx ==2:
-                    self._calibrate_z(20., initial_xy_positions)
+                    if self._z_tracking:
+                        self._calibrate_z(50., initial_xy_positions)
+                    else:
+                        _lgr.warning("can not calibrate Z without tracking")
                 else:
                     _lgr.warning("Invalid calibration direction detected")
                 self._calibrate_event.clear()
@@ -585,7 +589,7 @@ class StabilizerThread(_th.Thread):
                 t = _time.time()
                 self._report(t, image,
                              _np.full_like(initial_xy_positions, _np.nan), _np.nan)
-                _time.sleep(DELAY)
+                _time.sleep(self._period)
                 continue
             if not self._xy_track_event.is_set():
                 _lgr.info("Setting xy initial positions")
@@ -619,8 +623,6 @@ class StabilizerThread(_th.Thread):
                     x_resp = y_resp = 0.0
                 self._move_relative(x_resp, y_resp, z_resp)
             nt = _time.monotonic()
-            delay = DELAY - (nt - lt)
-            if delay < 0.001:  # be nice to other threads
-                delay = 0.001
+            delay = max(self._period - (nt - lt), 0.001)  # be nice to other threads
             _time.sleep(delay)
         _lgr.debug("Ending loop.")
