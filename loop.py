@@ -14,6 +14,7 @@ import time as _time
 import os as _os
 from typing import Callable as _Callable
 from concurrent.futures import ProcessPoolExecutor as _PPE
+import warnings as _warnings
 from typing import Union
 from classes import ROI, PointInfo
 
@@ -354,7 +355,9 @@ class StabilizerThread(_th.Thread):
         # prime pool for responsiveness (a _must_ on windows).
         nproc = _os.cpu_count()
         params = [[_np.eye(3)] * nproc, [1.] * nproc, [1.] * nproc, [1.] * nproc]
-        _ = tuple(self._executor.map(_gaussian_fit, *params))
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("ignore")  # FIXME: dudo que esto funcione
+            _ = tuple(self._executor.map(_gaussian_fit, *params))
         self._stop_event.clear()
         self.start()
         return True

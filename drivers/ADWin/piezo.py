@@ -157,7 +157,7 @@ class Piezo:
 
     def stop_z_actuator(self):
         if self._Z_ACTUATOR_RUNNING:
-            _adw.Stop_Process(_Processes.ACTUATOR_Z)
+            _adw.Stop_Process(_Processes.ACTUATOR_Z.value)
             self._Z_ACTUATOR_RUNNING = False
         else:
             _lgr.warning("Trying to stop inactive Z actuator")
@@ -177,7 +177,7 @@ class Piezo:
 
     def stop_xy_actuator(self):
         if self._XY_ACTUATOR_RUNNING:
-            _adw.Stop_Process(_Processes.ACTUATOR_XY)
+            _adw.Stop_Process(_Processes.ACTUATOR_XY.value)
             self._XY_ACTUATOR_RUNNING = False
         else:
             _lgr.warning("Trying to stop inactive XY actuator")
