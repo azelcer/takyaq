@@ -13,7 +13,7 @@ _lgr = _lgn.getLogger(__name__)
 # TODO: create a manager object that keeps track of notification callbacks, etc.
 
 # Move parameters
-# FPAR of current positions (updated on all ADwin scripts but check scan_line)
+# FPAR of current positions (updated on all ADwin scripts, but check scan_line)
 _X_CURRENT_FPAR = 70
 _Y_CURRENT_FPAR = 71
 _Z_CURRENT_FPAR = 72
@@ -151,6 +151,7 @@ class Piezo:
             minimum time between adjustments in µs
         """
         _adw.Set_FPar(_Z_ACTUATOR_TIME, _us2A(pixel_time))
+        _adw.Set_FPar(_Z_ACTUATOR_FPAR, _adw.Get_FPar(_Z_CURRENT_FPAR))
         if not self._Z_ACTUATOR_RUNNING:
             _adw.Start_Process(_Processes.ACTUATOR_Z.value)
             self._Z_ACTUATOR_RUNNING = True
@@ -171,6 +172,8 @@ class Piezo:
             minimum time between adjustments in µs
         """
         _adw.Set_FPar(_XY_ACTUATOR_TIME, _us2A(pixel_time))
+        _adw.Set_FPar(_X_ACTUATOR_FPAR, _adw.Get_FPar(_X_CURRENT_FPAR))
+        _adw.Set_FPar(_Y_ACTUATOR_FPAR, _adw.Get_FPar(_Y_CURRENT_FPAR))
         if not self._XY_ACTUATOR_RUNNING:
             _adw.Start_Process(_Processes.ACTUATOR_XY.value)
             self._XY_ACTUATOR_RUNNING = True
