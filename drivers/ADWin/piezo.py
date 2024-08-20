@@ -206,9 +206,9 @@ class Piezo:
         _adw.Set_FPar(_Z_ACTUATOR_FPAR, z_f)
 
     # Copiado de tools.tools
-    def ScanSignal(scan_range: float, n_pixels: int, n_aux_pixels: int,
-                   px_time: float, a_aux, dy, x_i,
-                   y_i, z_i, scantype, waitingtime=0):
+    def make_scan_data(scan_range: float, n_pixels: int, n_aux_pixels: int,
+                       px_time: float, a_aux, dy: float, x_i: float, y_i: float,
+                       z_i: float, scantype: str, waitingtime=0):
         """Inicializa los arreglos para realizar un escaneo suave.
 
         Distinguimos entre pixeles 'a medir' y 'totales', que incluyen auxiliares
@@ -220,11 +220,9 @@ class Piezo:
             n_aux_pixels (int): Numero de p'ixeles auxiliares.
             px_time (float): Tiempo por pixel en us.
             a_aux (float[4]): aceleraciones en las partes auxiliares.
-            dy (TYPE): lado de un pixel, en um.
-            x_i (TYPE): Posiciones iniciales en um.
-            y_i (TYPE): DESCRIPTION.
-            z_i (TYPE): DESCRIPTION.
-            scantype (TYPE): 'xy, 'xz', ''yz'.
+            dy (float): lado de un pixel, en um.
+            x_i, y_i, z_i (float): Posiciones iniciales en um.
+            scantype (str): 'xy, 'xz', o 'yz'.
             waitingtime (TYPE, optional): DESCRIPTION. Defaults to 0.
 
         Returns
@@ -393,7 +391,7 @@ class Piezo:
         """
         self.pxSize = scan_range/n_pixels   # in µm
         # pxTime esta en us
-        totalframeTime = n_pixels**2 * self.pxTime / 10E6  # en segundos 
+        # totalframeTime = n_pixels**2 * self.pxTime / 10E6  # en segundos
         # UNUSED
         # self.maxCounts = int(self.APDmaxCounts/(1/(self.pxTime*10**-6)))
         # self.linetime = (1/1000)*self.pxTime*self.NofPixels  # in ms
@@ -410,24 +408,24 @@ class Piezo:
         n_aux_pixels = 100
         # ver si ceil
         self.waiting_pixels = int(self.waitingTime/self.pxTime)
-        self.tot_pixels = (2 * self.NofPixels + 4 * self.NofAuxPixels +
+        self.tot_pixels = (2 * self.NofPixels + 4 * n_aux_pixels +
                            self.waiting_pixels)
 
         # create scan signal
         self.dy = self.pxSize
 
         (self.data_t, self.data_x,
-         self.data_y) = self.ScanSignal(scan_range,
-                                        n_pixels,
-                                         self.NofAuxPixels,
-                                         self.pxTime,
-                                         self.a_aux,
-                                         self.dy,
-                                         self.initialPos[0],
-                                         self.initialPos[1],
-                                         self.initialPos[2],
-                                         self.scantype,
-                                         self.waitingTime)
+         self.data_y) = self.make_scan_data(scan_range,
+                                            n_pixels,
+                                            n_aux_pixels,
+                                            self.pxTime,
+                                            self.a_aux,
+                                            self.dy,
+                                            self.initialPos[0],
+                                            self.initialPos[1],
+                                            self.initialPos[2],
+                                            self.scantype,
+                                            self.waitingTime)
 
         # Create blank image
         # full_scan = True --> size of the full scan including aux parts
@@ -439,7 +437,7 @@ class Piezo:
         self.image = _np.zeros(size)
         self.imageF = _np.zeros(size)
         self.imageB = _np.zeros(size)
-        self.i = 0
+        # self.i = 0
         # load the new parameters into the ADwin system
         self.update_device_param()
 

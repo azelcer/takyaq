@@ -24,7 +24,7 @@ _ADWIN_TIME_UNIT = 300
 # Conversions
 def microsec_to_ADwin(t: _Union[float,  _np.ndarray]) -> _np.ndarray:
     "time in µs to ADwin time units of 3.33 ns"
-    units = _np.array(t * _ADWIN_TIME_UNIT, dtype='int')
+    units = _np.array(t * _ADWIN_TIME_UNIT, dtype=_np.uint32)
     return units
 
 
@@ -51,14 +51,15 @@ um_shift = -0.02  # shift fijo en µm. Es muy rato que sea igual para todos
 def um2ADwin(x: _Union[float, _np.ndarray]) -> _np.ndarray:
     """x en µm"""
     # TODO: ver si redondear
-    rv = _np.array(((x - um_shift) / um_per_volt) * m_VtoU + q_VtoU, dtype='int')
+    rv = _np.array(((x - um_shift) / um_per_volt) * m_VtoU + q_VtoU, dtype=_np.uint32)
     return rv
 
 
-def ADwin2um(x:_Union[int, _np.ndarray]) -> float:
+def ADwin2um(x:_Union[int, _np.ndarray]) -> _np.ndarray:
     """rv en µm"""
     rv = _np.array(um_per_volt * (x - q_VtoU) / m_VtoU + um_shift)
     return rv
+
 
 # TODO: terminar de desarmar esta funcion
 def convert(x, key):
