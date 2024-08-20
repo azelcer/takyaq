@@ -61,6 +61,8 @@ _X_DAC = 1
 _Y_DAC = 2
 _Z_DAC = 6
 
+_MAX_LINE_LENGTH = 8192  # 1024
+
 
 class ScanType(_Enum):
     XY = (_X_DAC, _Y_DAC)
@@ -248,9 +250,11 @@ class Piezo:
 
         # scan signal: ida, medida, frenada, vuelta, medida, frenada
         size = 4 * n_aux_pixels + 2 * n_pixels
+        if size > _MAX_LINE_LENGTH:
+            raise ValueError("Scan length exceedes reserved ADwin buffer")
         total_range = aux_range[0] + aux_range[1] + scan_range
-
-        if total_range > 20:  # la platina puede recorrer hasta 20 um, pero importa la posicion inicial
+        # la platina puede recorrer hasta 20 um, pero no contamos la posicion inicial
+        if total_range > 20:
             _lgr.warning('scan + aux scan excede DAC/piezo range (%s um > 20um).'
                          ' Scan signal will be saturated', total_range)
         else:
@@ -344,18 +348,17 @@ class Piezo:
             signal_x = _np.array(signal_x)
             signal_time = _np.array(signal_time)
 
-        if scantype == 'xy':
+        if scantype == 'xy':  # cambiar cuando tengamos match
             signal_f = signal_x + x_i
             signal_s = signal_y + y_i
-
-        if scantype == 'xz':
+        elif scantype == 'xz':
             signal_f = signal_x + x_i
             signal_s = signal_y + (z_i - scan_range/2)
-
-        if scantype == 'yz':
+        elif scantype == 'yz':
             signal_f = signal_x + y_i
             signal_s = signal_y + (z_i - scan_range/2)
-
+        else:
+            raise ValueError(f"Tipo de scan desconocido: {scantype}")
         return signal_time, signal_f, signal_s
 
     def prepare_scan(self, line_times, fast_positions, slow_positions):
@@ -364,12 +367,12 @@ class Piezo:
         # self.tot_pixels = (2 * self.NofPixels + 4 * self.NofAuxPixels +
         #                    self.waiting_pixels)
         # Lo pongo como line_pixeles, espero que sea igual a x
-        n_line_pixels = 80 * 3  # nro de pixeles incluyendo aceleracion
+        n_line_pixels = len(line_times)  # nro de pixeles (totales) por linea
         _adw.Set_Par(_LINE_LENGTH_PAR, n_line_pixels)
         t_adwin = _us2A(line_times)
         # repeat last element because time array has to have one more
         # element than position array
-        # TODO: CORREGIR EN LOS SCRIPTS ADwin
+        # TODO: MEJORAR LOS SCRIPTS ADwin
         dt = t_adwin[-1] - t_adwin[-2]
         t_adwin = _np.append(t_adwin, (t_adwin[-1] + dt,))
 
@@ -400,10 +403,13 @@ class Piezo:
         a_max = 4 * 10E-6  # in µm/µs^2
 
         # TODO: verificar esto. El codigo original es un asco
-        if _np.all(self.a_aux_coeff <= 1):
-            self.a_aux = self.a_aux_coeff * a_max
-        else:
-            self.a_aux[self.a_aux > 1] = self.a_max
+        # if _np.all(self.a_aux_coeff <= 1):
+        #     self.a_aux = self.a_aux_coeff * a_max
+        # else:
+        #     self.a_aux[self.a_aux > 1] = self.a_max
+        self.a_aux = self.a_aux_coeff * a_max
+        # if _np.any(self.a_aux_coeff > 1):
+        self.a_aux[self.a_aux > 1] = a_max
 
         n_aux_pixels = 100
         # ver si ceil
