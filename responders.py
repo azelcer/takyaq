@@ -3,7 +3,7 @@
 Created on Wed Jul  3 14:55:43 2024
 
 The module shows how to implement an object that decides how to react after a
-localization event
+fiduciary localization event
 
 @author: azelcer
 """
@@ -229,3 +229,55 @@ class PIDReactor2:
         self._last_e = error
         self.lasttime = t
         return -rv
+
+
+class ScaledReactor:
+    """Proportional/partial response for large/small distances."""
+
+    _multiplier = 1.0
+
+    def __init__(self, xylimit: float = 3., zlimit: float = 5.,
+                 multiplier: float = 1.):
+        self._multiplier = multiplier
+        self._factor = 1. / _np.array((xylimit, xylimit, zlimit), dtype=_np.float)
+        self._buffer = _np.ones((2, 3,), dtype=_np.float)
+
+    def reset_xy(self, n_xy_rois: int):
+        """Initialize all neccesary internal structures.
+
+        Not needed.
+        """
+        pass
+
+    def reset_z(self):
+        """Initialize all neccesary internal structures.
+
+        Not needed.
+        """
+        pass
+
+    def response(self, t: float, xy_shifts: _Optional[_np.ndarray], z_shift: float):
+        """Process a mesaurement of the displacements.
+
+        Any parameter can be NAN, so we have to take it into account.
+
+        If xy_shifts has not been measured, a None will be received.
+
+        Must return a 3-item tuple representing the response in x, y and z
+        """
+        if xy_shifts is None:
+            x_shift = y_shift = 0.0
+        else:
+            x_shift, y_shift = _np.nanmean(xy_shifts, axis=0)
+        if x_shift is _np.nan:
+            _lgr.warning("x shift is NAN")
+            x_shift = 0.0
+        if y_shift is _np.nan:
+            _lgr.warning("y shift is NAN")
+            y_shift = 0.0
+        # TODO: do not create an array each time
+        rv = _np.array((x_shift, y_shift, z_shift,))
+        self._buffer[0, :] = rv
+        self._buffer[0] *= self._factor
+        factor = self._buffer.min(axis=0)
+        return self._multiplier * factor * rv
