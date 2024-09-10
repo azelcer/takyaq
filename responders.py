@@ -3,7 +3,7 @@
 Created on Wed Jul  3 14:55:43 2024
 
 The module shows how to implement an object that decides how to react after a
-localization event
+fiduciary localization event
 
 @author: azelcer
 """
@@ -12,7 +12,6 @@ import numpy as _np
 import logging as _lgn
 from typing import Optional as _Optional, Union as _Union
 from collections.abc import Collection as _Collection
-from numbers import Number as _Number
 
 _lgn.basicConfig()
 _lgr = _lgn.getLogger(__name__)
@@ -74,20 +73,10 @@ class PIReactor:
     _invert = _np.array([-1, -1, 1])
     lasttime = 0
 
-    def __init__(self, Kp: float | _Collection[float] = 1.,
-                 Ki: float | _Collection[float] = 1.):
-        if isinstance(Kp, _Number):
-            self._Kp[:] = float(Kp)
-        elif len(Kp) == 3:
-            self._Kp[:] = [float(_) for _ in Kp]
-        else:
-            raise TypeError(f"Invalid parameter used as Kp: {Kp}")
-        if isinstance(Ki, _Number):
-            self._Ki[:] = float(Kp)
-        elif len(Ki) == 3:
-            self._Ki[:] = [float(_) for _ in Ki]
-        else:
-            raise TypeError(f"Invalid parameter used as Ki: {Ki}")
+    def __init__(self, Kp: _Union[float, _Collection[float]] = 1.,
+                 Ki: _Union[float, _Collection[float]] = 1.):
+        self._Kp[:] = _np.array(Kp)
+        self._Ki[:] = _np.array(Ki)
 
     def reset_xy(self, n_xy_rois: int):
         """Initialize all neccesary internal structures."""
@@ -123,7 +112,7 @@ class PIReactor:
         error = _np.array((x_shift, y_shift, z_shift))
         if not self.lasttime:
             self.lasttime = t
-        self._cum += error * (t - self.lasttime)
+        self._cum += error * (t - self.lasttime)  # TODO: protect against suspended processes
         self.lasttime = t
         rv = error * self._Kp + self._Ki * self._cum
         return rv * self._invert
@@ -187,6 +176,7 @@ class PIDReactor:
         self.lasttime = t
         return rv * self._invert
 
+
 class PIDReactor2:
     """Modified PID Reactor. Proportional, short-time Integral, Derivative."""
 
@@ -239,3 +229,55 @@ class PIDReactor2:
         self._last_e = error
         self.lasttime = t
         return -rv
+
+
+class ScaledReactor:
+    """Proportional/partial response for large/small distances."""
+
+    _multiplier = 1.0
+
+    def __init__(self, xylimit: float = 3., zlimit: float = 5.,
+                 multiplier: float = 1.):
+        self._multiplier = multiplier
+        self._factor = 1. / _np.array((xylimit, xylimit, zlimit), dtype=_np.float64)
+        self._buffer = _np.ones((2, 3,), dtype=_np.float64)
+
+    def reset_xy(self, n_xy_rois: int):
+        """Initialize all neccesary internal structures.
+
+        Not needed.
+        """
+        pass
+
+    def reset_z(self):
+        """Initialize all neccesary internal structures.
+
+        Not needed.
+        """
+        pass
+
+    def response(self, t: float, xy_shifts: _Optional[_np.ndarray], z_shift: float):
+        """Process a mesaurement of the displacements.
+
+        Any parameter can be NAN, so we have to take it into account.
+
+        If xy_shifts has not been measured, a None will be received.
+
+        Must return a 3-item tuple representing the response in x, y and z
+        """
+        if xy_shifts is None:
+            x_shift = y_shift = 0.0
+        else:
+            x_shift, y_shift = _np.nanmean(xy_shifts, axis=0)
+        if x_shift is _np.nan:
+            _lgr.warning("x shift is NAN")
+            x_shift = 0.0
+        if y_shift is _np.nan:
+            _lgr.warning("y shift is NAN")
+            y_shift = 0.0
+        # TODO: do not create an array each time
+        rv = _np.array((x_shift, y_shift, -z_shift,))
+        self._buffer[0, :] = _np.abs(rv)
+        self._buffer[0] *= self._factor
+        factor = self._buffer.min(axis=0)
+        return -self._multiplier * factor * rv
