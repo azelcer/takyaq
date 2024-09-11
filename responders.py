@@ -239,8 +239,8 @@ class ScaledReactor:
     def __init__(self, xylimit: float = 3., zlimit: float = 5.,
                  multiplier: float = 1.):
         self._multiplier = multiplier
-        self._factor = 1. / _np.array((xylimit, xylimit, zlimit), dtype=_np.float)
-        self._buffer = _np.ones((2, 3,), dtype=_np.float)
+        self._factor = 1. / _np.array((xylimit, xylimit, zlimit), dtype=_np.float64)
+        self._buffer = _np.ones((2, 3,), dtype=_np.float64)
 
     def reset_xy(self, n_xy_rois: int):
         """Initialize all neccesary internal structures.
@@ -276,8 +276,8 @@ class ScaledReactor:
             _lgr.warning("y shift is NAN")
             y_shift = 0.0
         # TODO: do not create an array each time
-        rv = _np.array((x_shift, y_shift, z_shift,))
-        self._buffer[0, :] = rv
+        rv = _np.array((x_shift, y_shift, -z_shift,))
+        self._buffer[0, :] = _np.abs(rv)
         self._buffer[0] *= self._factor
         factor = self._buffer.min(axis=0)
-        return self._multiplier * factor * rv
+        return -self._multiplier * factor * rv
