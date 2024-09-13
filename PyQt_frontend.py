@@ -37,7 +37,11 @@ import logging as _lgn
 
 from estabilizador import Stabilizer, PointInfo, ROI
 from responders import BaseReactor, PIReactor, PIDReactor
-from mocks import MockCamera, MockPiezo
+
+from instrumental.drivers.cameras import uc480
+from instrumental import Q_
+from drivers import bpc_piezo as bpc
+import time
 
 _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
@@ -110,19 +114,62 @@ _SAVE_PERIOD = 200  # for now, must be <= _MAX_POINTS
 _XY_ROI_SIZE = 60
 _Z_ROI_SIZE = 100
 
-# Mock camera, replace with a real one
-_camera = MockCamera(
-    _CAMERA_X_NMPPX,
-    _CAMERA_Y_NMPPX,
-    _CAMERA_Z_NMPPX,
-    _CAMERA_X_NMPPX * 17,  # en pixeles
-    np.pi/4,
-    1,  # Center position noise in pixels
-    10,
-)
 
-# Mock piezo motor, replace with your own
-_piezo = MockPiezo(_camera)
+class CameraWrapper:
+    def __init__(self):
+        self._camera = uc480.UC480_Camera()
+        print(f"Model {self._camera.model}")
+        print(f"Cam Serial number {self._camera.serial}")
+        self._camera.master_gain = 4
+        self._camera.auto_blacklevel = True
+        self._camera.gain_boost = True
+        self._camera.start_live_video()
+        self._camera._set_exposure(Q_('50 ms'))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return None
+
+    def get_image(self):
+        raw_image = self._camera.latest_frame()
+        return raw_image[:, :, 0]
+
+    def close(self):
+        self._camera.stop_live_video()
+        self._camera.close()
+
+
+class PiezoWrapper:
+    def __init__(self):
+        self._pz = bpc.BenchtopPiezoWrapper(bpc.list_devices()[0])
+        print(f'Piezo Serial number {bpc.list_devices()}')
+        self._pz.connect()
+        self._pz.set_zero()  # important for internal piezo calibration
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return None
+
+    def get_position(self):
+        """Get the position nm."""
+        return (p * 1E3 for p in self._pz.get_positions())
+
+    def set_position(self, x, y, z):
+        """Set the position nm."""
+        self._pz.set_positions((x*1E-3, y*1E-3, z*1E-3,))
+
+    def close(self):
+        # Copiado de xyz_tracking... no me cierra
+        for i in range(10):
+            self._pz.set_positions([9-i, 9-i, 0])  # middle of the piezo range
+            time.sleep(.050)
+        self._pz.close()
 
 
 class Frontend(QFrame):
@@ -147,13 +194,13 @@ class Frontend(QFrame):
     _z_locking_enabled: bool = False
     _xy_locking_enabled: bool = False
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, camera, piezo, *args, **kwargs):
         """Init Frontend."""
         super().__init__(*args, **kwargs)
 
         self.setup_gui()
-        self._camera = _camera
-        self._piezo = _piezo
+        self._camera = camera
+        self._piezo = piezo
         # Callback object
         self._cbojt = QReader()
         self._cbojt.new_data.connect(self.get_data)
@@ -624,9 +671,9 @@ if __name__ == "__main__":
         app = QApplication([])
     else:
         app = QApplication.instance()
-    gui = Frontend()
-
-    gui.setWindowTitle("Takyq with PyQt frontend")
-    gui.show()
-    app.exec_()
-    app.quit()
+    with CameraWrapper() as camera, PiezoWrapper() as piezo:
+        gui = Frontend(camera, piezo)
+        gui.setWindowTitle("Takyaq with PyQt frontend for STED")
+        gui.show()
+        app.exec_()
+        app.quit()
