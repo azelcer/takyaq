@@ -253,6 +253,7 @@ class StabilizerThread(_th.Thread):
         self._xy_track_event.clear()
         self._xy_track_event.wait()
         self._xy_tracking = True
+        self._pos[:] = self._piezo.get_position()
         return True
 
     def disable_xy_tracking(self) -> bool:
@@ -296,7 +297,7 @@ class StabilizerThread(_th.Thread):
         if self._z_roi is None:
             _lgr.warning("Trying to enable z tracking without ROI")
             return False
-
+        self._pos[:] = self._piezo.get_position()
         self._z_tracking = True
         return True
 
@@ -546,7 +547,7 @@ class StabilizerThread(_th.Thread):
             for x, y in zip(shifts, response):
                 print(f"{x}, {y}")
             vec, _ = _np.linalg.lstsq(_np.vstack([shifts, _np.ones(points)]).T,
-                                        response, rcond=None)[0]
+                                      response, rcond=None)[0]
             print("slope = ", 1/vec)
             print("nmpp z = ", _np.sum(1./vec**2)**.5)
             # watch out order
