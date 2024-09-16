@@ -164,6 +164,7 @@ class StabilizerThread(_th.Thread):
         self._calibrate_event = _th.Event()
         self._rsp = corrector
         self._cb = callback
+        self._pos[:] = [v for v in piezo.get_position()]
 
     def set_log_level(self, loglevel: int):
         if loglevel < 0:

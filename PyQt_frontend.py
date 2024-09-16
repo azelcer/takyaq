@@ -5,6 +5,9 @@ Sample PyQT frontend for Takyaq.
 Uses a mocked camera and piezo motor: replace those parts with real interfaces
 to have a fully functional stabilization program.
 
+
+TODO: agregar boton para setear delay y regular el PI
+
 Use:
     - Set the parameters:
          - nm per pixel XY
@@ -120,9 +123,9 @@ class CameraWrapper:
         self._camera = uc480.UC480_Camera()
         print(f"Model {self._camera.model}")
         print(f"Cam Serial number {self._camera.serial}")
-        self._camera.master_gain = 4
-        self._camera.auto_blacklevel = True
-        self._camera.gain_boost = True
+        self._camera.master_gain = 2
+        # self._camera.auto_blacklevel = True
+        # self._camera.gain_boost = True
         self._camera.start_live_video()
         self._camera._set_exposure(Q_('50 ms'))
 
@@ -135,7 +138,7 @@ class CameraWrapper:
 
     def get_image(self):
         raw_image = self._camera.latest_frame()
-        return raw_image[:, :, 0]
+        return raw_image #[:, :, 0]
 
     def close(self):
         self._camera.stop_live_video()
@@ -145,9 +148,11 @@ class CameraWrapper:
 class PiezoWrapper:
     def __init__(self):
         self._pz = bpc.BenchtopPiezoWrapper(bpc.list_devices()[0])
-        print(f'Piezo Serial number {bpc.list_devices()}')
+        print(f'Piezo Serial number {list(bpc.list_devices())}')
         self._pz.connect()
-        self._pz.set_zero()  # important for internal piezo calibration
+        # self._pz.set_zero()  # important for internal piezo calibration
+        self._pz.set_positions((10, 10, 10,))
+
 
     def __enter__(self):
         return self
@@ -158,10 +163,13 @@ class PiezoWrapper:
 
     def get_position(self):
         """Get the position nm."""
-        return (p * 1E3 for p in self._pz.get_positions())
+        rv = tuple(p * 1E3 for p in self._pz.get_positions())
+        print("curr_pos =", rv)
+        return rv
 
     def set_position(self, x, y, z):
         """Set the position nm."""
+        print(x*1E-3, y*1E-3, z*1E-3,)
         self._pz.set_positions((x*1E-3, y*1E-3, z*1E-3,))
 
     def close(self):
@@ -169,8 +177,9 @@ class PiezoWrapper:
         for i in range(10):
             self._pz.set_positions([9-i, 9-i, 0])  # middle of the piezo range
             time.sleep(.050)
+        print("closing piezo")
         self._pz.close()
-
+        print("fin closing piezo")
 
 class Frontend(QFrame):
     """PyQt Frontend for Takyq.
