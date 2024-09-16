@@ -138,7 +138,7 @@ class CameraWrapper:
 
     def get_image(self):
         raw_image = self._camera.latest_frame()
-        return raw_image #[:, :, 0]
+        return raw_image
 
     def close(self):
         self._camera.stop_live_video()
@@ -152,7 +152,6 @@ class PiezoWrapper:
         self._pz.connect()
         # self._pz.set_zero()  # important for internal piezo calibration
         self._pz.set_positions((10, 10, 10,))
-
 
     def __enter__(self):
         return self
@@ -180,6 +179,7 @@ class PiezoWrapper:
         print("closing piezo")
         self._pz.close()
         print("fin closing piezo")
+
 
 class Frontend(QFrame):
     """PyQt Frontend for Takyq.
