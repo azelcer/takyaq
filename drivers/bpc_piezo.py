@@ -24,7 +24,7 @@ import time
 # this is seriously nasty.  Points for a better way of fixing this!
 sys.path.append(r"C:\Program Files\Thorlabs\Kinesis")
 
-# NB the 
+# NB the
 clr.AddReference("Thorlabs.MotionControl.Benchtop.PiezoCLI")
 clr.AddReference("Thorlabs.MotionControl.DeviceManagerCLI")
 clr.AddReference("System")
@@ -38,7 +38,6 @@ def list_devices():
     """Return a list of Kinesis serial numbers"""
     DeviceManagerCLI.BuildDeviceList()
     return DeviceManagerCLI.GetDeviceList()
-
 
 
 class BenchtopPiezoWrapper():
@@ -58,8 +57,8 @@ class BenchtopPiezoWrapper():
         for i in range(self._piezo.ChannelCount):
             chan = self._piezo.GetChannel(i+1) # Kinesis channels are one-indexed
             chan.WaitForSettingsInitialized(5000)
-            chan.StartPolling(250) # getting the voltage only works if you poll!
-            time.sleep(0.5) # ThorLabs have this in their example...
+            chan.StartPolling(250)  # getting the voltage only works if you poll!
+            time.sleep(0.5)  # ThorLabs have this in their example...
             chan.EnableDevice()
             # I don't know if the lines below are necessary or not - but removing them
             # may or may not work...
@@ -83,70 +82,53 @@ class BenchtopPiezoWrapper():
         try:
             if self.connected:
                 self.close()
-        except:
-            print("Error closing communications on deletion of device {self._ser}")
-    
+        except Exception as e:
+            print(f"Error {type(e)}closing communications on deletion of "
+                  f"device {self._ser}: {e}")
+
     def set_zero(self):
-        """Sets the voltage output to zero and defines the ensuing actuator position az zero. """
+        """Sets the voltage output to zero and defines the ensuing actuator
+        position az zero. """
         for chan in self.channels:
             chan.SetZero()
-        
+
     def set_output_voltages(self, voltages):
         """Set the output voltage"""
         assert len(voltages) == len(self.channels), "You must specify exactly one voltage per channel"
-        for chan, v in zip (self.channels, voltages):
+        for chan, v in zip(self.channels, voltages):
             chan.SetOutputVoltage(Decimal(v))
-    
+
     def get_output_voltages(self):
         """Retrieve the output voltages as a list of floating-point numbers"""
         return [Decimal.ToDouble(chan.GetOutputVoltage()) for chan in self.channels]
-    
+
     output_voltages = property(get_output_voltages, set_output_voltages)
-    
+
     def get_pos_control_mode(self):
         """Gets the Position Control Mode. 1 = open loop, 2 = closed loop"""
         return [(chan.GetPositionControlMode()) for chan in self.channels]
-    
-    
+
     def set_pos_control_mode(self, mode):
         """Sets the position control mode for all the channels"""
         for chan in self.channels:
             chan.SetPositionControlMode(mode)
-    
+
     def get_positions(self):
         """Retrieve the position as a list of floating-point numbers [μm]"""
         return [Decimal.ToDouble(chan.GetPosition()) for chan in self.channels]
 
-    
     def set_positions(self, positions):
         """Set the position [μm]"""
         assert len(positions) == len(self.channels), "You must specify exactly one position per channel"
-        for chan, p in zip (self.channels, positions):
+        for chan, p in zip(self.channels, positions):
             chan.SetPosition(Decimal(p))
 
-    
+    def set_xy_positions(self, positions):
+        """Set the position the two first channels [μm]"""
+        assert len(positions) == len(2), "You must specify exactly two positions"
+        for chan, p in zip(self.channels, positions):
+            chan.SetPosition(Decimal(p))
 
-        
-    
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    def set_z_positions(self, z_pos):
+        """Set the position the third channel [μm]"""
+        self.channels[2].SetPosition(Decimal(z_pos))
