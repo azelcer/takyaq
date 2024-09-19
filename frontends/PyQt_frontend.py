@@ -29,6 +29,7 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QCheckBox,
     QHBoxLayout,
+    QVBoxLayout,
     QLineEdit,
 )
 from PyQt5.QtGui import QDoubleValidator
@@ -39,7 +40,6 @@ import logging as _lgn
 
 from estabilizador import Stabilizer, PointInfo, ROI, CameraInfo
 import base_classes
-import classes
 
 _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
@@ -333,7 +333,6 @@ class Frontend(QFrame):
     def _set_delay(self, checked: bool):
         delay = float(self.delay_le.text())
         self._est.set_min_period(delay)
-        print(delay)
 
     @pyqtSlot(bool)
     def _calibrate_x(self, clicked: bool):
@@ -384,9 +383,11 @@ class Frontend(QFrame):
             self.zCurve.setData(t_data, z_data)
             try:  # It is possible to have all NANs data
                 hist, bin_edges = np.histogram(z_data, bins=30)
-                self.zHistogram.setOpts(x=np.mean((bin_edges[:-1], bin_edges[1:],), axis=0),
-                                        height=hist,
-                                        width=bin_edges[1]-bin_edges[0])
+                self.zHistogram.setOpts(
+                    x=np.mean((bin_edges[:-1], bin_edges[1:],), axis=0),
+                    height=hist,
+                    width=bin_edges[1]-bin_edges[0]
+                    )
             except Exception:
                 ...
 
@@ -473,15 +474,16 @@ class Frontend(QFrame):
         # Tracking control
         trackgb = QGroupBox("Tracking")
         trackLayout = QHBoxLayout()
-        trackgb.setLayout(trackLayout)
         self.trackAllBox = QCheckBox("All")
         self.trackXYBox = QCheckBox("xy")
         self.trackZBox = QCheckBox("z")
         trackLayout.addWidget(self.trackAllBox)
         trackLayout.addWidget(self.trackXYBox)
         trackLayout.addWidget(self.trackZBox)
+        trackgb.setLayout(trackLayout)
+        trackgb.updateGeometry()
+        trackgb.adjustSize()
         trackgb.setMinimumSize(trackgb.sizeHint())
-
         self.trackManager = GroupedCheckBoxes(
             self.trackAllBox,
             self.trackXYBox,
@@ -517,8 +519,6 @@ class Frontend(QFrame):
         self.calibrateYButton.clicked.connect(self._calibrate_y)
         self.calibrateZButton = QPushButton('Calibrate Z')
         self.calibrateZButton.clicked.connect(self._calibrate_z)
-
-        # Mover a otro lado
         delay_layout = QHBoxLayout()
         self.delay_le = QLineEdit(str(0.100))
         self.delay_le.setValidator(QDoubleValidator(1E-3, 1., 3))
@@ -526,21 +526,24 @@ class Frontend(QFrame):
         self.set_delay_button.clicked.connect(self._set_delay)
         delay_layout.addWidget(self.delay_le)
         delay_layout.addWidget(self.set_delay_button)
-        subgrid = QGridLayout()
-        self.paramWidget.setLayout(subgrid)
 
-        subgrid.addWidget(self.xyROIButton, 0, 0)
-        subgrid.addWidget(self.zROIButton, 1, 0)
-        subgrid.addWidget(self.delete_roiButton, 2, 0)
+        param_layout = QVBoxLayout()
+        self.paramWidget.setLayout(param_layout)
 
-        subgrid.addWidget(trackgb, 4, 0)
-        subgrid.addWidget(lockgb, 5, 0)
-        subgrid.addWidget(self.exportDataButton, 6, 0)
-        # TODO: group these 3 buttons horizontally
-        subgrid.addWidget(self.calibrateXButton, 7, 0)
-        subgrid.addWidget(self.calibrateYButton, 8, 0)
-        subgrid.addWidget(self.calibrateZButton, 9, 0)
-        subgrid.addLayout(delay_layout, 9, 0)
+        param_layout.addWidget(self.xyROIButton)
+        param_layout.addWidget(self.zROIButton)
+        param_layout.addWidget(self.delete_roiButton)
+
+        param_layout.addWidget(trackgb)
+        param_layout.addWidget(lockgb)
+
+        param_layout.addStretch()
+        param_layout.addWidget(self.exportDataButton)
+
+        param_layout.addWidget(self.calibrateXButton)
+        param_layout.addWidget(self.calibrateYButton)
+        param_layout.addWidget(self.calibrateZButton)
+        param_layout.addLayout(delay_layout)
 
         # stats widget
         self.statWidget = QGroupBox("Live statistics")
@@ -653,5 +656,6 @@ if __name__ == "__main__":
 
     gui.setWindowTitle("Takyq with PyQt frontend")
     gui.show()
+    gui.activateWindow()
     app.exec_()
     app.quit()
