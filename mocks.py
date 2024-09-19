@@ -5,10 +5,9 @@ Mocks
 """
 import numpy as _np
 import time as _time
-# from numba import njit as _njit
+from base_classes import BaseCamera, BasePiezo
 
 
-# @_njit
 def gaussian2D(grid, amplitude, x0, y0, sigma, offset):
     """2D gaussian."""
 
@@ -20,7 +19,7 @@ def gaussian2D(grid, amplitude, x0, y0, sigma, offset):
     return G
 
 
-class MockCamera:
+class MockCamera(BaseCamera):
     """Mock camera for testing and development.
 
     Simulates a drift that:
@@ -152,7 +151,7 @@ class MockCamera:
         )
 
 
-class MockPiezo:
+class MockPiezo(BasePiezo):
     """Mock piezoelectric motor.
 
     It can shift the zero of the mock camera, to test stabilization strategies.

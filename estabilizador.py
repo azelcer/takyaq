@@ -7,7 +7,7 @@ Separamos xy y z para estar listos
 
 import logging as _lgn
 from typing import Callable as _Callable
-from classes import ROI, PointInfo
+from classes import ROI, PointInfo, CameraInfo
 from loop import StabilizerThread as _ST
 
 

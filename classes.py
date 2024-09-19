@@ -25,3 +25,10 @@ class PointInfo:
     image: _np.ndarray
     z_shift: Union[float, None]
     xy_shifts: Union[_np.ndarray, None]
+
+
+@_dataclass
+class CameraInfo:
+    nm_ppx_xy: float
+    nm_ppx_z: float
+    angle: float

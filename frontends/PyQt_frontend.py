@@ -29,15 +29,17 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QCheckBox,
     QHBoxLayout,
+    QLineEdit,
 )
+from PyQt5.QtGui import QDoubleValidator
 
 import pyqtgraph as pg
 
 import logging as _lgn
 
-from estabilizador import Stabilizer, PointInfo, ROI
-from responders import BaseReactor, PIReactor, PIDReactor
-from mocks import MockCamera, MockPiezo
+from estabilizador import Stabilizer, PointInfo, ROI, CameraInfo
+import base_classes
+import classes
 
 _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
@@ -99,30 +101,11 @@ class QReader(QObject):
         self.new_data.emit(data.time, data.image, data.z_shift, data.xy_shifts)
 
 
-# Physical parameters specific for each setup (should go into a configuration file)
-_CAMERA_X_NMPPX = 23.5
-_CAMERA_Y_NMPPX = 23.5
-_CAMERA_Z_NMPPX = 10
-
 # Globals (should go into a configuration file)
 _MAX_POINTS = 200
 _SAVE_PERIOD = 200  # for now, must be <= _MAX_POINTS
 _XY_ROI_SIZE = 60
 _Z_ROI_SIZE = 100
-
-# Mock camera, replace with a real one
-_camera = MockCamera(
-    _CAMERA_X_NMPPX,
-    _CAMERA_Y_NMPPX,
-    _CAMERA_Z_NMPPX,
-    _CAMERA_X_NMPPX * 17,  # en pixeles
-    np.pi/4,
-    1,  # Center position noise in pixels
-    10,
-)
-
-# Mock piezo motor, replace with your own
-_piezo = MockPiezo(_camera)
 
 
 class Frontend(QFrame):
@@ -147,13 +130,18 @@ class Frontend(QFrame):
     _z_locking_enabled: bool = False
     _xy_locking_enabled: bool = False
 
-    def __init__(self, *args, **kwargs):
+    _camera_info: CameraInfo
+
+    def __init__(self, camera: base_classes.BaseCamera, piezo: base_classes.BasePiezo,
+                 responder: base_classes.BaseResponder, camera_info: CameraInfo,
+                 *args, **kwargs):
         """Init Frontend."""
         super().__init__(*args, **kwargs)
 
+        self._camera = camera
+        self._piezo = piezo
+        self._camera_info = camera_info
         self.setup_gui()
-        self._camera = _camera
-        self._piezo = _piezo
         # Callback object
         self._cbojt = QReader()
         self._cbojt.new_data.connect(self.get_data)
@@ -161,12 +149,13 @@ class Frontend(QFrame):
         self.reset_xy_data_buffers(len(self._roilist))
         self.reset_z_data_buffers()
         self._est = Stabilizer(
-            self._camera, self._piezo, _CAMERA_X_NMPPX, _CAMERA_Z_NMPPX, np.pi/4,
-            PIReactor(1, 0.3), self._cbojt.cb
+            self._camera, self._piezo, camera_info.nm_ppx_xy, camera_info.nm_ppx_z,
+            camera_info.angle, responder, self._cbojt.cb
         )
         self._est.set_min_period(0.15)
         self._t0 = _time.time()
         self._est.start_loop()
+        self._set_delay(True)
 
     def reset_data_buffers(self):
         """Reset data buffers unrelated to localization.
@@ -341,6 +330,12 @@ class Frontend(QFrame):
             self._xy_locking_enabled = True
 
     @pyqtSlot(bool)
+    def _set_delay(self, checked: bool):
+        delay = float(self.delay_le.text())
+        self._est.set_min_period(delay)
+        print(delay)
+
+    @pyqtSlot(bool)
     def _calibrate_x(self, clicked: bool):
         self._est.calibrate('x')
 
@@ -443,8 +438,8 @@ class Frontend(QFrame):
         self.yaxis = pg.AxisItem(orientation="left", maxTickLength=5)
         self.yaxis.showLabel(show=True)
         self.yaxis.setLabel("y", units="µm")
-        self.xaxis.setScale(scale=_CAMERA_X_NMPPX / 1000)
-        self.yaxis.setScale(scale=_CAMERA_Y_NMPPX / 1000)
+        self.xaxis.setScale(scale=self._camera_info.nm_ppx_xy / 1000)
+        self.yaxis.setScale(scale=self._camera_info.nm_ppx_xy / 1000)
 
         self.image_pi = imageWidget.addPlot(
             axisItems={"bottom": self.xaxis, "left": self.yaxis}
@@ -522,6 +517,15 @@ class Frontend(QFrame):
         self.calibrateYButton.clicked.connect(self._calibrate_y)
         self.calibrateZButton = QPushButton('Calibrate Z')
         self.calibrateZButton.clicked.connect(self._calibrate_z)
+
+        # Mover a otro lado
+        delay_layout = QHBoxLayout()
+        self.delay_le = QLineEdit(str(0.100))
+        self.delay_le.setValidator(QDoubleValidator(1E-3, 1., 3))
+        self.set_delay_button = QPushButton('Set Delay')
+        self.set_delay_button.clicked.connect(self._set_delay)
+        delay_layout.addWidget(self.delay_le)
+        delay_layout.addWidget(self.set_delay_button)
         subgrid = QGridLayout()
         self.paramWidget.setLayout(subgrid)
 
@@ -536,7 +540,7 @@ class Frontend(QFrame):
         subgrid.addWidget(self.calibrateXButton, 7, 0)
         subgrid.addWidget(self.calibrateYButton, 8, 0)
         subgrid.addWidget(self.calibrateZButton, 9, 0)
-        # subgrid.addWidget(self.clearDataButton, 9, 0)
+        subgrid.addLayout(delay_layout, 9, 0)
 
         # stats widget
         self.statWidget = QGroupBox("Live statistics")
@@ -620,11 +624,32 @@ class Frontend(QFrame):
 
 
 if __name__ == "__main__":
+    # Mock camera, replace with a real one
+    import mocks
+    from responders import PIReactor
+
+    _CAMERA_XY_NMPPX = 23.5
+    _CAMERA_Z_NMPPX = 10
+    camera_info = CameraInfo(_CAMERA_XY_NMPPX, _CAMERA_Z_NMPPX, np.pi/4,)
+
+    camera = mocks.MockCamera(
+        _CAMERA_XY_NMPPX,
+        _CAMERA_XY_NMPPX,
+        _CAMERA_Z_NMPPX,
+        _CAMERA_XY_NMPPX * 17,  # en pixeles
+        np.pi/4,
+        1,  # Center position noise in pixels
+        10,
+    )
+    # Mock piezo motor, replace with your own
+    piezo = mocks.MockPiezo(camera)
+
     if not QApplication.instance():
         app = QApplication([])
     else:
         app = QApplication.instance()
-    gui = Frontend()
+    responder = PIReactor()
+    gui = Frontend(camera, piezo, responder, camera_info)
 
     gui.setWindowTitle("Takyq with PyQt frontend")
     gui.show()

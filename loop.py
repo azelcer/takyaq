@@ -192,6 +192,7 @@ class StabilizerThread(_th.Thread):
         if period < 0:
             raise ValueError(f"Period can not be negative ({period})")
         self._period = period
+        _lgr.debug("New period set: %s", period)
 
     def set_xy_rois(self, rois: list[ROI]) -> bool:
         """Set ROIs for xy stabilization.
@@ -557,12 +558,11 @@ class StabilizerThread(_th.Thread):
 
     def run(self):
         """Run main stabilization loop."""
-        # TODO: let delay be configurable
-        DELAY = self._period
         initial_xy_positions = None
         initial_z_position = None
         while not self._stop_event.is_set():
             lt = _time.monotonic()
+            DELAY = self._period
             z_shift = 0.0
             xy_shifts = None
             if self._calibrate_event.is_set():
