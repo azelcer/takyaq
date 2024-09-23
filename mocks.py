@@ -2,6 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 Mocks
+=====
+
+  This module provide a mock camera and piezo stage. It is useful for testing and
+  developing without equipment.
+
 """
 import numpy as _np
 import time as _time
