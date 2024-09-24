@@ -447,34 +447,52 @@ class Piezo:
         # load the new parameters into the ADwin system
         self.update_device_param()
 
-# self.x_i = self.initialPos[0]
-# self.y_i = self.initialPos[1]
-# self.z_i = self.initialPos[2]
+    def update_device_param(self):
+        if self.detector == 'APD':
+            self.adw.Set_Par(3, 0)  # Digital input (APD)
+        if self.detector == 'photodiode':
+            self.adw.Set_Par(3, 1)  # Analog input (photodiode)
 
-# self.x_offset = 0
-# self.y_offset = 0
-# self.z_offset = 0
+        # select scan type
+        if self.scantype == 'xy':
+            self.adw.Set_FPar(10, 1)
+            self.adw.Set_FPar(11, 2)
+        if self.scantype == 'xz':
+            self.adw.Set_FPar(10, 1)
+            self.adw.Set_FPar(11, 6)
+        if self.scantype == 'yz':
+            self.adw.Set_FPar(10, 2)
+            self.adw.Set_FPar(11, 6)
 
-# #  load ADwin parameters
+        #  initial positions x and y
 
-# self.adw.Set_Par(1, self.tot_pixels)
+        # self.x_i = self.initialPos[0]
+        # self.y_i = self.initialPos[1]
+        # self.z_i = self.initialPos[2]
 
-# # prepare arrays for conversion into ADwin-readable data
+        # self.x_offset = 0
+        # self.y_offset = 0
+        # self.z_offset = 0
 
-# self.time_range = np.size(self.data_t_adwin)
-# self.space_range = np.size(self.data_x_adwin)
+        # #  load ADwin parameters
+        # self.adw.Set_Par(1, self.tot_pixels)
 
-# self.data_t_adwin = np.array(self.data_t_adwin, dtype='int')
-# self.data_x_adwin = np.array(self.data_x_adwin, dtype='int')
-# self.data_y_adwin = np.array(self.data_y_adwin, dtype='int')
+        # # prepare arrays for conversion into ADwin-readable data
 
-# self.data_t_adwin = list(self.data_t_adwin)
-# self.data_x_adwin = list(self.data_x_adwin)
-# self.data_y_adwin = list(self.data_y_adwin)
+        # self.time_range = np.size(self.data_t_adwin)
+        # self.space_range = np.size(self.data_x_adwin)
 
-# self.adw.SetData_Long(self.data_t_adwin, 2, 1, self.time_range)
-# self.adw.SetData_Long(self.data_x_adwin, 3, 1, self.space_range)
-# self.adw.SetData_Long(self.data_y_adwin, 4, 1, self.space_range)
+        # self.data_t_adwin = np.array(self.data_t_adwin, dtype='int')
+        # self.data_x_adwin = np.array(self.data_x_adwin, dtype='int')
+        # self.data_y_adwin = np.array(self.data_y_adwin, dtype='int')
+
+        # self.data_t_adwin = list(self.data_t_adwin)
+        # self.data_x_adwin = list(self.data_x_adwin)
+        # self.data_y_adwin = list(self.data_y_adwin)
+
+        # self.adw.SetData_Long(self.data_t_adwin, 2, 1, self.time_range)
+        # self.adw.SetData_Long(self.data_x_adwin, 3, 1, self.space_range)
+        # self.adw.SetData_Long(self.data_y_adwin, 4, 1, self.space_range)
 
     def scan_line(self):
         _adw.Start_Process(_Processes.LINE_SCAN.value)
@@ -485,6 +503,14 @@ class Piezo:
         #     _time.sleep(0.05)
         line_data = self.adw.GetData_Long(1, 1, self.tot_pixels)
         return line_data
+
+    def scan_image(self): ## cuasi pseudocode
+        for i in range(80)
+            dy = tools.convert(self.dy, 'ΔXtoU')
+            self.y_offset = int(self.y_offset + dy)  # ¿Porqué?
+            self.adw.Set_FPar(2, self.y_offset)
+            lineData = self.scan_line()
+            yield linedata
 
 # def trace_acquisition(self, Npoints, pixeltime):
 #     """ 
