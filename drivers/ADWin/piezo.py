@@ -268,7 +268,7 @@ class Piezo:
         signal_y[0:n_aux_pixels] = _np.linspace(0, dy, n_aux_pixels)
         signal_y[n_aux_pixels:size] = dy  # * _np.ones(size - n_aux_pixels)
 
-        # part 1
+        # part 1: aceleración cuadratica
         i0 = 0
         i1 = n_aux_pixels
 
@@ -276,67 +276,51 @@ class Piezo:
         t1 = signal_time[i0:i1]
         signal_x[i0:i1] = (1/2) * a_aux[0] * t1**2
 
-        # part 2
+        # part 2: lineal
         i2 = n_aux_pixels + n_pixels
         signal_time[i1:i2] = _np.linspace(aux_time[0] + dt,
                                           aux_time[0] + line_time, n_pixels)
-
         t2 = signal_time[i1:i2] - aux_time[0]
         x02 = aux_range[0]
-
         signal_x[i1:i2] = x02 + v * t2
 
-        # part 3
+        # part 3: frenado cuadrático
         i3 = 2 * n_aux_pixels + n_pixels
-
         t3_i = aux_time[0] + line_time + dt_aux
         t3_f = aux_time[0] + aux_time[1] + line_time
         signal_time[i2:i3] = _np.linspace(t3_i, t3_f, n_aux_pixels)
-
         t3 = signal_time[i2:i3] - (aux_time[0] + line_time)
         x03 = aux_range[0] + scan_range
-
         signal_x[i2:i3] = - (1/2) * a_aux[1] * t3**2 + v * t3 + x03
 
-        # part 4
+        # part 4: regreso cuadrático
         i4 = 3 * n_aux_pixels + n_pixels
-
         t4_i = aux_time[0] + aux_time[1] + line_time + dt_aux
         t4_f = aux_time[0] + aux_time[1] + aux_time[2] + line_time
-
         signal_time[i3:i4] = _np.linspace(t4_i, t4_f, n_aux_pixels)
-
         t4 = signal_time[i3:i4] - t4_i
         x04 = aux_range[0] + aux_range[1] + scan_range
         signal_x[i3:i4] = - (1/2) * a_aux[2] * t4**2 + x04
 
-        # part 5
-
+        # part 5: vuelta lineal
         i5 = 3 * n_aux_pixels + 2 * n_pixels
-
         t5_i = aux_time[0] + aux_time[1] + aux_time[2] + line_time + dt_aux
         t5_f = aux_time[0] + aux_time[1] + aux_time[2] + 2 * line_time
-
         signal_time[i4:i5] = _np.linspace(t5_i, t5_f, n_pixels)
-
         t5 = signal_time[i4:i5] - t5_i
         x05 = aux_range[3] + scan_range
-
         signal_x[i4:i5] = x05 - v * t5
 
-        # part 6
+        # part 6: frenado cuadrático
         i6 = size
-
         t6_i = aux_time[0] + aux_time[1] + aux_time[2] + 2 * line_time + dt_aux
         t6_f = _np.sum(aux_time) + 2 * line_time
-
         signal_time[i5:i6] = _np.linspace(t6_i, t6_f, n_aux_pixels)
-
         t6 = signal_time[i5:i6] - t6_i
         x06 = aux_range[3]
-
         signal_x[i5:i6] = (1/2) * a_aux[3] * t6**2 - v * t6 + x06
 
+        # tiempo de espera
         if waitingtime != 0:
             signal_x = list(signal_x)
             signal_x[i3:i3] = x04 * _np.ones(n_wt_pixels)
@@ -348,6 +332,7 @@ class Piezo:
             signal_x = _np.array(signal_x)
             signal_time = _np.array(signal_time)
 
+        # Esto hace un shift del cero... cambiar después
         if scantype == 'xy':  # cambiar cuando tengamos match
             signal_f = signal_x + x_i
             signal_s = signal_y + y_i
@@ -372,7 +357,7 @@ class Piezo:
         t_adwin = _us2A(line_times)
         # repeat last element because time array has to have one more
         # element than position array
-        # TODO: MEJORAR LOS SCRIPTS ADwin
+        # TODO: MEJORAR LOS SCRIPTS ADwin para usar delta-t
         dt = t_adwin[-1] - t_adwin[-2]
         t_adwin = _np.append(t_adwin, (t_adwin[-1] + dt,))
 
@@ -394,11 +379,7 @@ class Piezo:
         """
         self.pxSize = scan_range/n_pixels   # in µm
         # pxTime esta en us
-        # totalframeTime = n_pixels**2 * self.pxTime / 10E6  # en segundos
         # UNUSED
-        # self.maxCounts = int(self.APDmaxCounts/(1/(self.pxTime*10**-6)))
-        # self.linetime = (1/1000)*self.pxTime*self.NofPixels  # in ms
-
         #  aux scan parameters
         a_max = 4 * 10E-6  # in µm/µs^2
 
@@ -440,9 +421,6 @@ class Piezo:
             size = (self.tot_pixels, self.tot_pixels)
         else:
             size = (self.NofPixels, self.NofPixels)
-        self.image = _np.zeros(size)
-        self.imageF = _np.zeros(size)
-        self.imageB = _np.zeros(size)
         # self.i = 0
         # load the new parameters into the ADwin system
         self.update_device_param()
