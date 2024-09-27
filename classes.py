@@ -9,6 +9,7 @@ import numpy as _np
 from dataclasses import dataclass as _dataclass
 from typing import Union
 
+
 @_dataclass
 class ROI:
     """Represents a ROI in pixels."""

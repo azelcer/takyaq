@@ -7,6 +7,8 @@ import ctypes as _ct
 import time as _time
 import logging as _lgn
 from dataclasses import dataclass as _dataclass
+from .scan_types import RegionScanType
+
 
 _lgr = _lgn.getLogger(__name__)
 
@@ -63,30 +65,29 @@ _Z_DAC = 6
 
 _MAX_LINE_LENGTH = 8192  # 1024
 
+_scan_type_map = {
+    RegionScanType.XY: (_X_DAC, _Y_DAC),
+    RegionScanType.XZ: (_X_DAC, _Z_DAC),
+    RegionScanType.YZ: (_Y_DAC, _Z_DAC),
+    }
 
-class ScanType(_Enum):
-    XY = (_X_DAC, _Y_DAC)
-    XZ = (_X_DAC, _Z_DAC)
-    YZ = (_Y_DAC, _Z_DAC)
-
-
-@_dataclass
-class ScanInfo:
-    """Intercambia (entrada/salida) informacion sobre un scan."""
-    scan_range: float  # scan range in um
-    n_pixels: int  # number of pixels on a scan side
-    t_pixel: float  # time per pixel in us
-    n_aux_pixels: int  # Numero de pixeles auxiliares para acelerar
-    a_aux: list  # aceleracion en cada segmento)
-    x_initial: float  # Posiciones iniciales en um.
-    y_initial: float  # Posiciones iniciales en um.
-    z_initial: float  # Posiciones iniciales en um.
-    scantype: ScanType
-    t_wait: float = 0.  # in us
-    # Output
-    px_size: float = None  # in um
-    n_waiting_pixels: int = None
-    n_pixels_total: int # (2 * self.NofPixels + 4 * self.NofAuxPixels + self.waiting_pixels)
+# @_dataclass
+# class ScanInfo:
+#     """Intercambia (entrada/salida) informacion sobre un scan."""
+#     scan_range: float  # scan range in um
+#     n_pixels: int  # number of pixels on a scan side
+#     t_pixel: float  # time per pixel in us
+#     n_aux_pixels: int  # Numero de pixeles auxiliares para acelerar
+#     a_aux: list  # aceleracion en cada segmento)
+#     x_initial: float  # Posiciones iniciales en um.
+#     y_initial: float  # Posiciones iniciales en um.
+#     z_initial: float  # Posiciones iniciales en um.
+#     scantype: ScanType
+#     t_wait: float = 0.  # in us
+#     # Output
+#     px_size: float = None  # in um
+#     n_waiting_pixels: int = None
+#     n_pixels_total: int  # (2 * self.NofPixels + 4 * self.NofAuxPixels + self.waiting_pixels)
 
 
 class Piezo:
@@ -97,6 +98,7 @@ class Piezo:
 
     _Z_ACTUATOR_RUNNING = False  # equivalent to checking Processes.ACTUATOR_Z
     _XY_ACTUATOR_RUNNING = False   # equivalent to checking Processes.ACTUATOR_XY
+    _scan_type = None  # scan type selected
 
     def init(self):
         ...
@@ -138,11 +140,11 @@ class Piezo:
         return tuple(_ADwin2um((_adw.Get_FPar(par))) for par in
                      (_X_CURRENT_FPAR, _Y_CURRENT_FPAR, _Z_CURRENT_FPAR))
 
-    def select_scan_type(self, scantype: ScanType):
-        """Select scan type: xy, xz or yz."""
-        fast, slow = scantype.value
-        _adw.Set_FPar(_FAST_DIR_PAR, fast)
-        _adw.Set_FPar(_SLOW_DIR_PAR, slow)
+    # def select_scan_type(self, scantype: ScanType):
+    #     """Select scan type: xy, xz or yz."""
+    #     fast, slow = scantype.value
+    #     _adw.Set_FPar(_FAST_DIR_PAR, fast)
+    #     _adw.Set_FPar(_SLOW_DIR_PAR, slow)
 
     def start_z_actuator(self, pixel_time: int = 1000):
         """Start Z actuator.
@@ -207,13 +209,16 @@ class Piezo:
         z_f = _um2ADwin(z)
         _adw.Set_FPar(_Z_ACTUATOR_FPAR, z_f)
 
-    # Copiado de tools.tools
-    def make_scan_data(scan_range: float, n_pixels: int, n_aux_pixels: int,
-                       px_time: float, a_aux, dy: float, x_i: float, y_i: float,
-                       z_i: float, scantype: str, waitingtime=0):
+    # Copiado de tools.tools, modificado
+    def get_scan_distances(self, scan_range: float, n_pixels: int, n_aux_pixels: int,
+                           px_time: float, a_aux, dy: float, waitingtime=0):
         """Inicializa los arreglos para realizar un escaneo suave.
 
         Distinguimos entre pixeles 'a medir' y 'totales', que incluyen auxiliares
+
+        TODO: cambiar scripts ADwin y este para hacerlo más razonable:
+            - usar tiempos de espera en vez de absolutos
+            - pasar la lógica a la ADwin para tener movimientos más suaves.
 
         Parameters
         ----------
@@ -223,8 +228,6 @@ class Piezo:
             px_time (float): Tiempo por pixel en us.
             a_aux (float[4]): aceleraciones en las partes auxiliares.
             dy (float): lado de un pixel, en um.
-            x_i, y_i, z_i (float): Posiciones iniciales en um.
-            scantype (str): 'xy, 'xz', o 'yz'.
             waitingtime (TYPE, optional): DESCRIPTION. Defaults to 0.
 
         Returns
@@ -236,7 +239,8 @@ class Piezo:
         px_size = scan_range/n_pixels  # en um
         v = px_size/px_time  # en um/us
         line_time = n_pixels * px_time  # en us, solo de la parte a medir
-        # a_aux es la aceleracion en los pixeles auxiliares, tal vez distinto para x, y, z
+        # a_aux es la aceleracion en los pixeles auxiliares, tal vez distinta en los
+        # 4 cachos de (aceleración, frenado, aceleración vuelta, frenado)
         aux_time = v / a_aux
         aux_range = (1/2) * a_aux * (aux_time)**2
 
@@ -261,12 +265,12 @@ class Piezo:
             _lgr.info('Scan signal OK')
 
         signal_time = _np.zeros(size)
-        signal_x = _np.zeros(size)
-        signal_y = _np.zeros(size)
+        signal_f = _np.zeros(size)
+        signal_s = _np.zeros(size)
 
         # smooth dy part
-        signal_y[0:n_aux_pixels] = _np.linspace(0, dy, n_aux_pixels)
-        signal_y[n_aux_pixels:size] = dy  # * _np.ones(size - n_aux_pixels)
+        signal_s[0:n_aux_pixels] = _np.linspace(0, dy, n_aux_pixels)
+        signal_s[n_aux_pixels:size] = dy  # * _np.ones(size - n_aux_pixels)
 
         # part 1: aceleración cuadratica
         i0 = 0
@@ -274,7 +278,7 @@ class Piezo:
 
         signal_time[i0:i1] = _np.linspace(0, aux_time[0], n_aux_pixels)
         t1 = signal_time[i0:i1]
-        signal_x[i0:i1] = (1/2) * a_aux[0] * t1**2
+        signal_f[i0:i1] = (1/2) * a_aux[0] * t1**2
 
         # part 2: lineal
         i2 = n_aux_pixels + n_pixels
@@ -282,7 +286,7 @@ class Piezo:
                                           aux_time[0] + line_time, n_pixels)
         t2 = signal_time[i1:i2] - aux_time[0]
         x02 = aux_range[0]
-        signal_x[i1:i2] = x02 + v * t2
+        signal_f[i1:i2] = x02 + v * t2
 
         # part 3: frenado cuadrático
         i3 = 2 * n_aux_pixels + n_pixels
@@ -291,7 +295,7 @@ class Piezo:
         signal_time[i2:i3] = _np.linspace(t3_i, t3_f, n_aux_pixels)
         t3 = signal_time[i2:i3] - (aux_time[0] + line_time)
         x03 = aux_range[0] + scan_range
-        signal_x[i2:i3] = - (1/2) * a_aux[1] * t3**2 + v * t3 + x03
+        signal_f[i2:i3] = - (1/2) * a_aux[1] * t3**2 + v * t3 + x03
 
         # part 4: regreso cuadrático
         i4 = 3 * n_aux_pixels + n_pixels
@@ -300,7 +304,7 @@ class Piezo:
         signal_time[i3:i4] = _np.linspace(t4_i, t4_f, n_aux_pixels)
         t4 = signal_time[i3:i4] - t4_i
         x04 = aux_range[0] + aux_range[1] + scan_range
-        signal_x[i3:i4] = - (1/2) * a_aux[2] * t4**2 + x04
+        signal_f[i3:i4] = - (1/2) * a_aux[2] * t4**2 + x04
 
         # part 5: vuelta lineal
         i5 = 3 * n_aux_pixels + 2 * n_pixels
@@ -309,7 +313,7 @@ class Piezo:
         signal_time[i4:i5] = _np.linspace(t5_i, t5_f, n_pixels)
         t5 = signal_time[i4:i5] - t5_i
         x05 = aux_range[3] + scan_range
-        signal_x[i4:i5] = x05 - v * t5
+        signal_f[i4:i5] = x05 - v * t5
 
         # part 6: frenado cuadrático
         i6 = size
@@ -318,52 +322,42 @@ class Piezo:
         signal_time[i5:i6] = _np.linspace(t6_i, t6_f, n_aux_pixels)
         t6 = signal_time[i5:i6] - t6_i
         x06 = aux_range[3]
-        signal_x[i5:i6] = (1/2) * a_aux[3] * t6**2 - v * t6 + x06
+        signal_f[i5:i6] = (1/2) * a_aux[3] * t6**2 - v * t6 + x06
 
         # tiempo de espera
+        # TODO: revisar bien este cacho
         if waitingtime != 0:
-            signal_x = list(signal_x)
-            signal_x[i3:i3] = x04 * _np.ones(n_wt_pixels)
+            signal_f = list(signal_f)
+            signal_f[i3:i3] = x04 * _np.ones(n_wt_pixels)
             signal_time[i3:i6] = signal_time[i3:i6] + waitingtime
             signal_time = list(signal_time)
             signal_time[i3:i3] = _np.linspace(t3_f, t3_f + waitingtime, n_wt_pixels)
-            signal_y = _np.append(signal_y, _np.ones(n_wt_pixels) * signal_y[i3])
+            signal_s = _np.append(signal_s, _np.ones(n_wt_pixels) * signal_s[i3])
 
-            signal_x = _np.array(signal_x)
+            signal_f = _np.array(signal_f)
             signal_time = _np.array(signal_time)
 
-        # Esto hace un shift del cero... cambiar después
-        if scantype == 'xy':  # cambiar cuando tengamos match
-            signal_f = signal_x + x_i
-            signal_s = signal_y + y_i
-        elif scantype == 'xz':
-            signal_f = signal_x + x_i
-            signal_s = signal_y + (z_i - scan_range/2)
-        elif scantype == 'yz':
-            signal_f = signal_x + y_i
-            signal_s = signal_y + (z_i - scan_range/2)
-        else:
-            raise ValueError(f"Tipo de scan desconocido: {scantype}")
         return signal_time, signal_f, signal_s
 
-    def prepare_scan(self, line_times, fast_positions, slow_positions):
-        # TODO: implementar escaneos
-        # self.waiting_pixels = int(self.waitingTime/self.pxTime)
-        # self.tot_pixels = (2 * self.NofPixels + 4 * self.NofAuxPixels +
-        #                    self.waiting_pixels)
-        # Lo pongo como line_pixeles, espero que sea igual a x
-        n_line_pixels = len(line_times)  # nro de pixeles (totales) por linea
-        _adw.Set_Par(_LINE_LENGTH_PAR, n_line_pixels)
+    def prepare_scan_params(self, scan_type: RegionScanType,
+                            full_data_shape: tuple[int, int]):
+        """Setea los parametros de la ADwin que no sean las posiciones."""
+        waiting_pixels = 0
+        total_pixels_per_line = full_data_shape[0]
+        _adw.Set_Par(_LINE_LENGTH_PAR, total_pixels_per_line)
+        fast, slow = _scan_type_map[scan_type]
+        _adw.Set_FPar(_FAST_DIR_PAR, fast)
+        _adw.Set_FPar(_SLOW_DIR_PAR, slow)
+        self._scan_type = scan_type
+
+    def update_scan_coords(self, line_times, fast_positions, slow_positions):
         t_adwin = _us2A(line_times)
+        x_adwin = _um2ADwin(fast_positions)
+        y_adwin = _um2ADwin(slow_positions)
         # repeat last element because time array has to have one more
         # element than position array
         # TODO: MEJORAR LOS SCRIPTS ADwin para usar delta-t
-        dt = t_adwin[-1] - t_adwin[-2]
-        t_adwin = _np.append(t_adwin, (t_adwin[-1] + dt,))
-
-        x_adwin = _um2ADwin(fast_positions)
-        y_adwin = _um2ADwin(slow_positions)
-        # pasar todos los arrays a dtype=int32
+        t_adwin = _np.append(t_adwin, (2 * t_adwin[-1] - t_adwin[-2],))
         _adw.SetData_Long(t_adwin.ctypes.data_as(_ct.POINTER(_ct.c_int32)),
                           _SCAN_TIMES_ARRAY, 1, len(t_adwin))
         _adw.SetData_Long(x_adwin.ctypes.data_as(_ct.POINTER(_ct.c_int32)),
@@ -371,109 +365,23 @@ class Piezo:
         _adw.SetData_Long(y_adwin.ctypes.data_as(_ct.POINTER(_ct.c_int32)),
                           _SLOW_DIR_POSITIONS_ARRAY, 1, len(y_adwin))
 
-# ver calculate_derived_param en scan.py
-    def calculate_derived_param(self, scan_range: float, n_pixels: int):
-        """
-        scanRange Ancho en nm
-        NofPixeles es pixeles por lado
-        """
-        self.pxSize = scan_range/n_pixels   # in µm
-        # pxTime esta en us
-        # UNUSED
-        #  aux scan parameters
-        a_max = 4 * 10E-6  # in µm/µs^2
-
-        # TODO: verificar esto. El codigo original es un asco
-        # if _np.all(self.a_aux_coeff <= 1):
-        #     self.a_aux = self.a_aux_coeff * a_max
-        # else:
-        #     self.a_aux[self.a_aux > 1] = self.a_max
-        self.a_aux = self.a_aux_coeff * a_max
-        # if _np.any(self.a_aux_coeff > 1):
-        self.a_aux[self.a_aux > 1] = a_max
-
-        n_aux_pixels = 100
-        # ver si ceil
-        self.waiting_pixels = int(self.waitingTime/self.pxTime)
-        self.tot_pixels = (2 * self.NofPixels + 4 * n_aux_pixels +
-                           self.waiting_pixels)
-
-        # create scan signal
-        self.dy = self.pxSize
-
-        (self.data_t, self.data_x,
-         self.data_y) = self.make_scan_data(scan_range,
-                                            n_pixels,
-                                            n_aux_pixels,
-                                            self.pxTime,
-                                            self.a_aux,
-                                            self.dy,
-                                            self.initialPos[0],
-                                            self.initialPos[1],
-                                            self.initialPos[2],
-                                            self.scantype,
-                                            self.waitingTime)
-
-        # Create blank image
-        # full_scan = True --> size of the full scan including aux parts
-        # full_scan = False --> size of the forward part of the scan
-        if self.full_scan is True:
-            size = (self.tot_pixels, self.tot_pixels)
-        else:
-            size = (self.NofPixels, self.NofPixels)
-        # self.i = 0
-        # load the new parameters into the ADwin system
-        self.update_device_param()
-
-    def update_device_param(self):
-        if self.detector == 'APD':
-            self.adw.Set_Par(3, 0)  # Digital input (APD)
-        if self.detector == 'photodiode':
-            self.adw.Set_Par(3, 1)  # Analog input (photodiode)
-
-        # select scan type
-        if self.scantype == 'xy':
-            self.adw.Set_FPar(10, 1)
-            self.adw.Set_FPar(11, 2)
-        if self.scantype == 'xz':
-            self.adw.Set_FPar(10, 1)
-            self.adw.Set_FPar(11, 6)
-        if self.scantype == 'yz':
-            self.adw.Set_FPar(10, 2)
-            self.adw.Set_FPar(11, 6)
-
-        #  initial positions x and y
-
-        # self.x_i = self.initialPos[0]
-        # self.y_i = self.initialPos[1]
-        # self.z_i = self.initialPos[2]
-
-        # self.x_offset = 0
-        # self.y_offset = 0
-        # self.z_offset = 0
-
-        # #  load ADwin parameters
-        # self.adw.Set_Par(1, self.tot_pixels)
-
-        # # prepare arrays for conversion into ADwin-readable data
-
-        # self.time_range = np.size(self.data_t_adwin)
-        # self.space_range = np.size(self.data_x_adwin)
-
-        # self.data_t_adwin = np.array(self.data_t_adwin, dtype='int')
-        # self.data_x_adwin = np.array(self.data_x_adwin, dtype='int')
-        # self.data_y_adwin = np.array(self.data_y_adwin, dtype='int')
-
-        # self.data_t_adwin = list(self.data_t_adwin)
-        # self.data_x_adwin = list(self.data_x_adwin)
-        # self.data_y_adwin = list(self.data_y_adwin)
-
-        # self.adw.SetData_Long(self.data_t_adwin, 2, 1, self.time_range)
-        # self.adw.SetData_Long(self.data_x_adwin, 3, 1, self.space_range)
-        # self.adw.SetData_Long(self.data_y_adwin, 4, 1, self.space_range)
+    def update_slow_scan(self, slow_positions):
+        self._slow_pos = slow_positions
+        y_adwin = _um2ADwin(slow_positions)
+        _adw.SetData_Long(y_adwin.ctypes.data_as(_ct.POINTER(_ct.c_int32)),
+                          _SLOW_DIR_POSITIONS_ARRAY, 1, len(y_adwin))
 
     def scan_line(self):
+        if self._XY_ACTUATOR_RUNNING:
+            raise ValueError(f"Can not scan while XY stabilization is active")
+        elif self._Z_ACTUATOR_RUNNING and self._scan_type is not RegionScanType.XY:
+            raise ValueError(f"Can not scan {self._scan_type.name} while Z stabilization is active")
+        elif self._scan_type is None:
+            raise ValueError("Can not scan line without scan type being set")
         _adw.Start_Process(_Processes.LINE_SCAN.value)
+        # TODO: check if sleep is neccesary.
+        # Me parece que no porque todo se importa con GIL release
+        # GetData_log no vuelve hasta que no terminó
         line_time = self.data_t[-1] * 1E3  # target linetime in ms
         wait_time = line_time * 1.05 * 1E3  # ahora en segundos
         _time.sleep(wait_time)
@@ -481,14 +389,6 @@ class Piezo:
         #     _time.sleep(0.05)
         line_data = self.adw.GetData_Long(1, 1, self.tot_pixels)
         return line_data
-
-    def scan_image(self): ## cuasi pseudocode
-        for i in range(80)
-            dy = tools.convert(self.dy, 'ΔXtoU')
-            self.y_offset = int(self.y_offset + dy)  # ¿Porqué?
-            self.adw.Set_FPar(2, self.y_offset)
-            lineData = self.scan_line()
-            yield linedata
 
 # def trace_acquisition(self, Npoints, pixeltime):
 #     """ 
