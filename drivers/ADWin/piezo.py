@@ -104,8 +104,18 @@ class Piezo:
     _XY_ACTUATOR_RUNNING = False   # equivalent to checking Processes.ACTUATOR_XY
     _scan_type = None  # scan type selected
 
+    def __new__(cls, *args, **kwargs):
+        """Quick singleton type."""
+        if not hasattr(cls, '_instance'):
+            orig = super(Piezo, cls)
+            cls._instance = orig.__new__(cls, *args, **kwargs)
+        return cls._instance
+
     def init(self):
-        ...
+        pos_zero = _um2ADwin(0)
+        _adw.Set_FPar(_X_CURRENT_FPAR, pos_zero)
+        _adw.Set_FPar(_Y_CURRENT_FPAR, pos_zero)
+        _adw.Set_FPar(_Z_CURRENT_FPAR, pos_zero)
 
     def _prepare_simplemove(self, x: float, y: float, z: float,
                             n_pixels_x: int = 128, n_pixels_y: int = 128, n_pixels_z: int = 128,
@@ -360,7 +370,7 @@ class Piezo:
         y_adwin = _um2ADwin(slow_positions)
         # repeat last element because time array has to have one more
         # element than position array
-        # TODO: MEJORAR LOS SCRIPTS ADwin para usar delta-t
+        # TODO: MEJORAR LOS SCRIPTS ADwin para usar tiempo por pixel
         t_adwin = _np.append(t_adwin, (2 * t_adwin[-1] - t_adwin[-2],))
         _adw.SetData_Long(t_adwin.ctypes.data_as(_ct.POINTER(_ct.c_int32)),
                           _SCAN_TIMES_ARRAY, 1, len(t_adwin))
@@ -418,15 +428,6 @@ class Piezo:
 #     return trace_data
 
 
-def init(adw: _ADwin.ADwin):
-    """Initialize nanoMax piezo."""
-    pos_zero = _um2ADwin(0)
-    adw.Set_FPar(_X_CURRENT_FPAR, pos_zero)
-    adw.Set_FPar(_Y_CURRENT_FPAR, pos_zero)
-    adw.Set_FPar(_Z_CURRENT_FPAR, pos_zero)
-
-
-# Initializtion
-from multiprocessing import current_process
-if current_process().name == 'MainProcess':
-    init(_adw)  # Initialize piezo
+# from multiprocessing import current_process
+# if current_process().name == 'MainProcess':
+#     init(_adw)  # Initialize piezo
