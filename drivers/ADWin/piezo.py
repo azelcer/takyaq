@@ -7,8 +7,7 @@ import ctypes as _ct
 import time as _time
 import logging as _lgn
 from dataclasses import dataclass as _dataclass
-from .scan_types import RegionScanType
-
+from enum import Enum as _Enum
 
 _lgr = _lgn.getLogger(__name__)
 
@@ -65,11 +64,16 @@ _Z_DAC = 6
 
 _MAX_LINE_LENGTH = 8192  # 1024
 
-_scan_type_map = {
-    RegionScanType.XY: (_X_DAC, _Y_DAC),
-    RegionScanType.XZ: (_X_DAC, _Z_DAC),
-    RegionScanType.YZ: (_Y_DAC, _Z_DAC),
-    }
+
+class RegionScanType(_Enum):
+    """2D Regions scan types.
+
+    Mapped to tuples of DACs for (fast, slow) scan axes
+    """
+
+    XY = (_X_DAC, _Y_DAC)
+    XZ = (_X_DAC, _Z_DAC)
+    YZ = (_Y_DAC, _Z_DAC)
 
 # @_dataclass
 # class ScanInfo:
@@ -345,7 +349,7 @@ class Piezo:
         waiting_pixels = 0
         total_pixels_per_line = full_data_shape[0]
         _adw.Set_Par(_LINE_LENGTH_PAR, total_pixels_per_line)
-        fast, slow = _scan_type_map[scan_type]
+        fast, slow = scan_type.value
         _adw.Set_FPar(_FAST_DIR_PAR, fast)
         _adw.Set_FPar(_SLOW_DIR_PAR, slow)
         self._scan_type = scan_type
@@ -397,9 +401,9 @@ class Piezo:
 #     pixeltime = time per point (in μs)
 #     """
 #     # pixeltime in μs
-    # if Npoints > 1024:
-    #     _lg.warning("Requested number of trace points (%s) excedes max", Npoints)
-    #     Npoints = 1024
+#     if Npoints > 1024:
+#         _lg.warning("Requested number of trace points (%s) excedes max", Npoints)
+#         Npoints = 1024
 
 #     self.adw.Set_FPar(65, tools.timeToADwin(pixeltime))
 #     self.adw.Set_Par(60, Npoints+1)
@@ -407,7 +411,7 @@ class Piezo:
 #     self.adw.Start_Process(6)
 #     trace_time = Npoints * (pixeltime/1000)  # target linetime in ms
 #     wait_time = trace_time * 1.05 # TO DO: optimize this, it should work with 1.00, or maybe even less?
-#                                  # it should even work without the time.sleep()
+#                                   # it should even work without the time.sleep()
 #     time.sleep(wait_time/1000) # in s
 #     trace_data = self.adw.GetData_Long(6, 0, Npoints+1)
 #     trace_data = trace_data[1:]# TO DO: fix the high count error on first element
