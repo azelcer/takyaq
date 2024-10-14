@@ -14,6 +14,7 @@ import time as _time
 import os as _os
 from typing import Callable as _Callable
 from concurrent.futures import ProcessPoolExecutor as _PPE
+import warnings as _warnings
 from typing import Union
 from classes import ROI, PointInfo
 
@@ -41,7 +42,6 @@ def _gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
     ravel: bool, default True
         If True, returns the raveled values, otherwise return a 2D array
     """
-
     x, y = grid
     x0 = float(x0)
     y0 = float(y0)
@@ -53,7 +53,7 @@ def _gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
 
 
 def _gaussian_fit(data: _np.ndarray, x_max: float, y_max: float,
-                 sigma: float) -> tuple[float, float, float]:
+                  sigma: float) -> tuple[float, float, float]:
     """Fit a gaussian to an image.
 
     All data is in PIXEL units.
@@ -166,6 +166,7 @@ class StabilizerThread(_th.Thread):
         self._cb = callback
 
     def set_log_level(self, loglevel: int):
+        """Set log level for module."""
         if loglevel < 0:
             _lgr.warning("Invalid log level asked: %s", loglevel)
         else:
@@ -179,11 +180,11 @@ class StabilizerThread(_th.Thread):
         period: float
             Minimum period, in seconds.
 
-        The period is not precise, and might be longer than asked for if the
-        time needed to locate the stage real position takes too long.
+        The period is not precise, and might be longer than selected if the
+        time needed to locate the stage real position takes longer.
 
-        The thread always sleeps for at least 10 ms, in order to let other
-        threads run.
+        The thread always sleeps for at least 1 ms, in order to let other
+        threads run (see main loop).
 
         Raises
         ------
@@ -355,7 +356,9 @@ class StabilizerThread(_th.Thread):
         # prime pool for responsiveness (a _must_ on windows).
         nproc = _os.cpu_count()
         params = [[_np.eye(3)] * nproc, [1.] * nproc, [1.] * nproc, [1.] * nproc]
-        _ = tuple(self._executor.map(_gaussian_fit, *params))
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("ignore")  # FIXME: dudo que esto funcione
+            _ = tuple(self._executor.map(_gaussian_fit, *params))
         self._stop_event.clear()
         self.start()
         return True
@@ -546,7 +549,7 @@ class StabilizerThread(_th.Thread):
             for x, y in zip(shifts, response):
                 print(f"{x}, {y}")
             vec, _ = _np.linalg.lstsq(_np.vstack([shifts, _np.ones(points)]).T,
-                                        response, rcond=None)[0]
+                                      response, rcond=None)[0]
             print("slope = ", 1/vec)
             print("nmpp z = ", _np.sum(1./vec**2)**.5)
             # watch out order
@@ -560,6 +563,7 @@ class StabilizerThread(_th.Thread):
         """Run main stabilization loop."""
         initial_xy_positions = None
         initial_z_position = None
+        self._pos[:] = self._piezo.get_position()
         while not self._stop_event.is_set():
             lt = _time.monotonic()
             DELAY = self._period
@@ -568,9 +572,15 @@ class StabilizerThread(_th.Thread):
             if self._calibrate_event.is_set():
                 _lgr.debug("Calibration event received")
                 if self._calib_idx >= 0 and self._calib_idx < 2:
-                    self._calibrate_xy(50., initial_xy_positions)
+                    if self._xy_tracking:
+                        self._calibrate_xy(50., initial_xy_positions)
+                    else:
+                        _lgr.warning("can not calibrate XY without tracking")
                 elif self._calib_idx ==2:
-                    self._calibrate_z(20., initial_xy_positions)
+                    if self._z_tracking:
+                        self._calibrate_z(50., initial_xy_positions)
+                    else:
+                        _lgr.warning("can not calibrate Z without tracking")
                 else:
                     _lgr.warning("Invalid calibration direction detected")
                 self._calibrate_event.clear()
@@ -584,7 +594,7 @@ class StabilizerThread(_th.Thread):
                 t = _time.time()
                 self._report(t, image,
                              _np.full_like(initial_xy_positions, _np.nan), _np.nan)
-                _time.sleep(DELAY)
+                _time.sleep(self._period)
                 continue
             if not self._xy_track_event.is_set():
                 _lgr.info("Setting xy initial positions")
