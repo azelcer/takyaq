@@ -25,16 +25,19 @@ from responders import PIReactor
 from mocks import MockCamera, MockPiezo
 from classes import CameraInfo
 
+
 _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
 
 
+# Constants for camera mock
 _CAMERA_XY_NMPPX = 23.5
 _CAMERA_Z_NMPPX = 10
+_CAMERA_Z_ROTATION = 3.1415/4
 
 
 if __name__ == "__main__":
-    camera_info = CameraInfo(_CAMERA_XY_NMPPX, _CAMERA_Z_NMPPX, 3.1415/4,)
+    camera_info = CameraInfo(_CAMERA_XY_NMPPX, _CAMERA_Z_NMPPX, _CAMERA_Z_ROTATION,)
     # Mock camera, replace with a real one
     camera = MockCamera(
         _CAMERA_XY_NMPPX,
@@ -55,7 +58,7 @@ if __name__ == "__main__":
         app = QApplication.instance()
     gui = Frontend(camera, piezo, responder, camera_info)
 
-    gui.setWindowTitle("Takyq with PyQt frontend")
+    gui.setWindowTitle("Takyaq with PyQt frontend")
     gui.show()
     gui.raise_()
     gui.activateWindow()
