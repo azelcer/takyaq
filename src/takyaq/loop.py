@@ -16,7 +16,8 @@ from typing import Callable as _Callable
 from concurrent.futures import ProcessPoolExecutor as _PPE
 import warnings as _warnings
 from typing import Union
-from classes import ROI, PointInfo
+from .info_types import ROI, PointInfo, CameraInfo
+import takyaq.base_classes as _bc
 
 
 _lgn.basicConfig()
@@ -27,12 +28,15 @@ _lgr.setLevel(_lgn.DEBUG)
 def _gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
     """Generate a 2D gaussian.
 
+    The amplitude is not normalized, as the function result is meant to be used
+    just for fitting centers.
+
     Parameters
     ----------
     grid: numpy.ndarray
         X, Y coordinates grid to generate the gaussian over
     amplitude: float
-        FIXME: amplitude
+        Non-normalized amplitude
     x0, y0: float
         position of gaussian center
     sigma: float
@@ -106,6 +110,7 @@ class StabilizerThread(_th.Thread):
     _z_tracking: bool = False
     _xy_stabilization: bool = False
     _z_stabilization: bool = False
+
     # ROIS from the user
     _xy_rois: _np.ndarray = None  # [ [min, max]_x, [min, max]_y] * n_rois
     _z_roi = None  # min/max x, min/max y
@@ -114,8 +119,10 @@ class StabilizerThread(_th.Thread):
     _period = 0.150  # minumum loop time in seconds
 
     def __init__(
-        self, camera, piezo, nmpp_xy: float, nmpp_z: float, z_ang: float,
-        corrector, callback: _Callable[[PointInfo], None] = None, *args, **kwargs
+        self, camera: _bc.BaseCamera, piezo: _bc.BasePiezo,
+        camera_info: CameraInfo,
+        corrector: _bc.BaseResponder,
+        callback: _Callable[[PointInfo], None] = None, *args, **kwargs
     ):
         """Init stabilization thread.
 
@@ -127,12 +134,8 @@ class StabilizerThread(_th.Thread):
         piezo:
             Piezo controller. Must implement a method called `set_position` that
             accepts x, y and z positions
-        nmpp_xy: float
-            nanometers in XY plane per camera pixel
-        nmpp_z: float
-            nanometers in Z direction per camera pixel
-        z_ang: float
-            angle between positive X direction and movement of the Z spot, in radians
+        camera_info: info_types.CameraInfo
+            Holds information about camera and (x,y) and z marks relation
         corrector:
             object that provides a response
         callback: Callable
@@ -145,9 +148,9 @@ class StabilizerThread(_th.Thread):
         if not callable(getattr(camera, "get_image", None)):
             raise ValueError("The camera object does not expose a 'get_image' method")
         self._camera = camera
-        self._nmpp_xy = nmpp_xy
-        self._nmpp_z = nmpp_z
-        self._rot_vec = _np.array((_np.cos(z_ang), _np.sin(z_ang), ))
+        self._nmpp_xy = camera_info.nm_ppx_xy
+        self._nmpp_z = camera_info.nm_ppx_z
+        self._rot_vec = _np.array((_np.cos(camera_info.angle), _np.sin(camera_info.angle), ))
 
         if not callable(getattr(piezo, "set_position", None)):
             raise ValueError("The piezo object does not expose a 'set_position' method")
@@ -156,6 +159,7 @@ class StabilizerThread(_th.Thread):
         self._piezo = piezo
         self._stop_event = _th.Event()
         self._stop_event.set()
+
         # FIXME: ROI setting and tracking are coupled, and names are mixed up
         self._xy_track_event = _th.Event()
         self._xy_track_event.set()
@@ -237,7 +241,7 @@ class StabilizerThread(_th.Thread):
             return False
         # TODO: protect against negative numbers max(0, _.min_x), min(_.max_x, self.img.shape[1])
         self._z_roi = _np.array(
-            [[roi.min_x, roi.max_x], [roi.min_y, roi.max_y]], dtype=_np.uint16
+            [[roi.min_x, roi.max_x], [roi.min_y, roi.max_y]], dtype=_np.uint32
         )
         self._z_roi_OK_event.clear()
         if self.is_alive():

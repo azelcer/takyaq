@@ -38,14 +38,16 @@ import pyqtgraph as pg
 
 import logging as _lgn
 
-from estabilizador import Stabilizer, PointInfo, ROI, CameraInfo
-import base_classes
+from takyaq.estabilizador import Stabilizer, PointInfo, ROI, CameraInfo
+
+import takyaq.base_classes as _bc
 
 _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
 
 
 def qtROI2Limits(roi: pg.ROI):
+    """Translate pyqtgraphs's ROIs position and size to our ROIS"""
     x, y = roi.pos()
     w, h = roi.size()
     return ROI(x, x + w, y, y + h)
@@ -132,8 +134,8 @@ class Frontend(QFrame):
 
     _camera_info: CameraInfo
 
-    def __init__(self, camera: base_classes.BaseCamera, piezo: base_classes.BasePiezo,
-                 responder: base_classes.BaseResponder, camera_info: CameraInfo,
+    def __init__(self, camera: _bc.BaseCamera, piezo: _bc.BasePiezo,
+                 responder: _bc.BaseResponder, camera_info: CameraInfo,
                  *args, **kwargs):
         """Init Frontend."""
         super().__init__(*args, **kwargs)
@@ -149,8 +151,7 @@ class Frontend(QFrame):
         self.reset_xy_data_buffers(len(self._roilist))
         self.reset_z_data_buffers()
         self._est = Stabilizer(
-            self._camera, self._piezo, camera_info.nm_ppx_xy, camera_info.nm_ppx_z,
-            camera_info.angle, responder, self._cbojt.cb
+            self._camera, self._piezo, camera_info, responder, self._cbojt.cb
         )
         self._est.set_min_period(0.15)
         self._t0 = _time.time()
@@ -269,7 +270,7 @@ class Frontend(QFrame):
                 _lgr.warning("We need a Z ROI to init tracking")
                 self.trackZBox.setCheckState(Qt.CheckState.Unchecked)
                 return
-            self._est.set_z_roi(qtROI2Limits(self._z_ROI))
+            self._est.set_z_roi(ROI.from_pyqtgraph(self._z_ROI))
             self.reset_z_data_buffers()
             if not self._xy_tracking_enabled:
                 self.reset_data_buffers()
@@ -567,7 +568,7 @@ class Frontend(QFrame):
         self.xyzGraph = pg.GraphicsLayoutWidget()
         self.xyzGraph.setAntialiasing(True)
 
-        # TODO: HAcer funci'on 'unica de creacion
+        # TODO: Wrap boilerplate into a function
         self.xyzGraph.xPlot = self.xyzGraph.addPlot(row=0, col=0)
         self.xyzGraph.xPlot.setLabels(bottom=("Time", "s"), left=("X shift", "nm"))
         self.xyzGraph.xPlot.showGrid(x=True, y=True)

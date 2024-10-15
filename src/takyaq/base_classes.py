@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 """
+Abstract base classes for Takyaq.
+
+This module is provided to ensure that at least the method names and signatures are
+honoured. Please note that Takyaq uses nm as units in all calls.
+
 @author: azelcer
 """
 from abc import ABC as _ABC, abstractclassmethod as _abstractclassmethod
@@ -21,10 +26,12 @@ class BasePiezo(_ABC):
 
     @_abstractclassmethod
     def get_position(self) -> tuple[float, float, float]:
+        """Return (x, y, z) position of the piezo in nanometers."""
         ...
 
     @_abstractclassmethod
     def set_position(self, x: float, y: float, z: float):
+        """Move to position x, y, z, specified in nanometers."""
         ...
 
     # @_abstractclassmethod
@@ -37,7 +44,7 @@ class BasePiezo(_ABC):
 
 
 class BaseResponder(_ABC):
-    """Base class for responders"""
+    """Base class for responders."""
 
     @_abstractclassmethod
     def reset_xy(self, n_xy_rois: int):

@@ -21,9 +21,9 @@ import logging as _lgn
 from frontends.PyQt_frontend import Frontend
 from PyQt5.QtWidgets import (QApplication, )
 
-from responders import PIReactor
-from mocks import MockCamera, MockPiezo
-from classes import CameraInfo
+from takyaq.responders import PIReactor
+from takyaq.mocks import MockCamera, MockPiezo
+from takyaq.info_types import CameraInfo
 
 
 _lgr = _lgn.getLogger(__name__)

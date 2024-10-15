@@ -7,8 +7,8 @@ Separamos xy y z para estar listos
 
 import logging as _lgn
 from typing import Callable as _Callable
-from classes import ROI, PointInfo, CameraInfo
-from loop import StabilizerThread as _ST
+from .info_types import ROI, PointInfo, CameraInfo
+from .loop import StabilizerThread as _ST
 
 
 _lgr = _lgn.getLogger(__name__)
@@ -25,16 +25,13 @@ class Stabilizer:
         self,
         camera,
         piezo,
-        pixel2dist_xy: float,
-        pixel2dist_z: float,
-        z_ang: float,
+        camera_info,
         corrector,
         callback: _Callable[[PointInfo], None] = None,
     ):
         self._camera = camera
         self._piezo = piezo
-        self._thread = _ST(camera, piezo, pixel2dist_xy,
-                           pixel2dist_z, z_ang, corrector, callback)
+        self._thread = _ST(camera, piezo, camera_info, corrector, callback)
 
         fromparents = dir(_ST.__base__)
 

@@ -1,16 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-Adapters
+Convenience wrappers for piezo interfaces.
 """
 
+from base_classes import BasePiezo
 
-class InMicrons:
-    """Wrapper for piezoelectric motors in microns."""
+
+class InMicrons(BasePiezo):
+    """Wrapper for piezoelectric stages in microns."""
 
     _get_position = None
     _set_position = None
 
     def __init__(self, get_pos_func, set_pos_func):
+        """Class that wraps piezo functions that manage values in micrometers.
+
+        Parameters
+        ----------
+        get_pos_func : Callable
+            Function that returns a tuple of (x, y, z) positions in micrometers.
+        set_pos_func : callable
+            Function that takes as parameters x, y and z positions in micrometers.
+        """
         self._get_position = get_pos_func
         self._set_position = set_pos_func
 
@@ -24,13 +35,22 @@ class InMicrons:
         return
 
 
-class InNanometers:
-    """Wrapper for piezoelectric motors."""
+class InNanometers(BasePiezo):
+    """Wrapper for piezoelectric stages."""
 
     _get_position = None
     _set_position = None
 
     def __init__(self, get_pos_func, set_pos_func):
+        """Class that wraps piezo functions into a common class.
+
+        Parameters
+        ----------
+        get_pos_func : Callable
+            Function that returns a tuple of (x, y, z) positions in nanometers.
+        set_pos_func : Callable
+            Function that takes as parameters x, y and z positions in nanometers.
+        """
         self._get_position = get_pos_func
         self._set_position = set_pos_func
 

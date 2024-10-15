@@ -10,7 +10,7 @@ Mocks
 """
 import numpy as _np
 import time as _time
-from base_classes import BaseCamera, BasePiezo
+from .base_classes import BaseCamera, BasePiezo
 
 
 def gaussian2D(grid, amplitude, x0, y0, sigma, offset):
