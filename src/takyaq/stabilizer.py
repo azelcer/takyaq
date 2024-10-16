@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Estabilizador
+Stabilizer
 
-Separamos xy y z para estar listos.
-Agnóstico de GUIs'
+XY and Z are managed independently.
 """
 
 import numpy as _np
@@ -49,14 +48,17 @@ def _gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
     x0 = float(x0)
     y0 = float(y0)
     a = 1.0 / (2 * sigma**2)
-    G = offset + amplitude * _np.exp(-(a * ((x - x0) ** 2) + a * ((y - y0) ** 2)))
+    G = offset + amplitude * _np.exp(
+        -(a * ((x - x0) ** 2) + a * ((y - y0) ** 2))
+    )
     if ravel:
         G = G.ravel()
     return G
 
 
-def _gaussian_fit(data: _np.ndarray, x_max: float, y_max: float,
-                  sigma: float) -> tuple[float, float, float]:
+def _gaussian_fit(
+    data: _np.ndarray, x_max: float, y_max: float, sigma: float
+) -> tuple[float, float, float]:
     """Fit a gaussian to an image.
 
     All data is in PIXEL units.
@@ -94,21 +96,23 @@ def _gaussian_fit(data: _np.ndarray, x_max: float, y_max: float,
         v_min = data.min()
         v_max = data.max()
         args = (v_max - v_min, x_max, y_max, sigma, v_min)
-        popt, pcov = _sp.optimize.curve_fit(_gaussian2D, xdata, data.ravel(), p0=args)
+        popt, pcov = _sp.optimize.curve_fit(
+            _gaussian2D, xdata, data.ravel(), p0=args
+        )
     except Exception as e:
         _lgr.warning("Error fiting: %s, %s", e, type(e))
         return _np.nan, _np.nan, _np.nan
     return popt[1:4]
 
 
-class StabilizerThread(_th.Thread):
+class Stabilizer(_th.Thread):
     """Wraps a stabilization thread.
 
-    As usual, functions names beggining with an underscore do not belong to the public
-    interface.
+    As usual, functions names beggining with an underscore do not belong to the
+    public interface.
 
-    Functions that *do* belong to the public interface communicate with the running
-    thread relying on the GIL (like setting a value) or in events.
+    Functions that *do* belong to the public interface communicate with the
+    running thread relying on the GIL (like setting a value) or in events.
     """
 
     # Status flags
@@ -125,10 +129,14 @@ class StabilizerThread(_th.Thread):
     _period = 0.150  # minumum loop time in seconds
 
     def __init__(
-        self, camera: _bc.BaseCamera, piezo: _bc.BasePiezo,
+        self,
+        camera: _bc.BaseCamera,
+        piezo: _bc.BasePiezo,
         camera_info: CameraInfo,
         corrector: _bc.BaseResponder,
-        callback: _Callable[[PointInfo], None] = None, *args, **kwargs
+        callback: _Callable[[PointInfo], None] = None,
+        *args,
+        **kwargs,
     ):
         """Init stabilization thread.
 
@@ -152,16 +160,27 @@ class StabilizerThread(_th.Thread):
 
         # check if camera and piezo are OK
         if not callable(getattr(camera, "get_image", None)):
-            raise ValueError("The camera object does not expose a 'get_image' method")
+            raise ValueError(
+                "The camera object does not expose a 'get_image' method"
+            )
         self._camera = camera
         self._nmpp_xy = camera_info.nm_ppx_xy
         self._nmpp_z = camera_info.nm_ppx_z
-        self._rot_vec = _np.array((_np.cos(camera_info.angle), _np.sin(camera_info.angle), ))
+        self._rot_vec = _np.array(
+            (
+                _np.cos(camera_info.angle),
+                _np.sin(camera_info.angle),
+            )
+        )
 
         if not callable(getattr(piezo, "set_position", None)):
-            raise ValueError("The piezo object does not expose a 'set_position' method")
+            raise ValueError(
+                "The piezo object does not expose a 'set_position' method"
+            )
         if not callable(getattr(piezo, "get_position", None)):
-            raise ValueError("The piezo object does not expose a 'get_position' method")
+            raise ValueError(
+                "The piezo object does not expose a 'get_position' method"
+            )
         self._piezo = piezo
         self._stop_event = _th.Event()
         self._stop_event.set()
@@ -174,6 +193,7 @@ class StabilizerThread(_th.Thread):
         self._calibrate_event = _th.Event()
         self._rsp = corrector
         self._cb = callback
+        # Avoid users from shooting themselves in the foot
         self._old_run = self.run
         self.run = self._donotcall
         self._old_start = self.start
@@ -228,7 +248,8 @@ class StabilizerThread(_th.Thread):
             return False
         self._xy_rois = _np.array(
             # TODO: protect against negative numbers max(0, _.min_x), min(_.max_x, self.img.shape[1])
-            [[[_.min_x, _.max_x], [_.min_y, _.max_y]] for _ in rois], dtype=_np.uint16
+            [[[_.min_x, _.max_x], [_.min_y, _.max_y]] for _ in rois],
+            dtype=_np.uint16,
         )
         return True
 
@@ -346,12 +367,12 @@ class StabilizerThread(_th.Thread):
 
     def calibrate(self, direction: str) -> bool:
         """Perform calibration of pixel size."""
-        if direction not in ['x', 'y', 'z']:
+        if direction not in ["x", "y", "z"]:
             _lgr.warning("Invalid calibration direction: %s", direction)
             return False
 
         # no `match` yet (we support python 3.9), so do a dirty trick
-        self._calib_idx = {'x': 0, 'y': 1, 'z': 2}[direction]
+        self._calib_idx = {"x": 0, "y": 1, "z": 2}[direction]
         self._calibrate_event.set()
 
     def set_z_stabilization(self, enabled: bool) -> bool:
@@ -368,9 +389,14 @@ class StabilizerThread(_th.Thread):
         self._executor = _PPE()
         # prime pool for responsiveness (a _must_ on windows).
         nproc = _os.cpu_count()
-        params = [[_np.eye(3)] * nproc, [1.] * nproc, [1.] * nproc, [1.] * nproc]
+        params = [
+            [_np.eye(3)] * nproc,
+            [1.0] * nproc,
+            [1.0] * nproc,
+            [1.0] * nproc,
+        ]
         with _warnings.catch_warnings():
-            _warnings.simplefilter("ignore")  # FIXME: dudo que esto funcione
+            _warnings.simplefilter("ignore")
             _ = tuple(self._executor.map(_gaussian_fit, *params))
         self._stop_event.clear()
         self.run = self._old_run
@@ -406,19 +432,23 @@ class StabilizerThread(_th.Thread):
         ------
             numpy.ndarray of shape (NROIS, 2) with x,y center in nm
         """
-        trimmeds = [image[roi[0, 0]:roi[0, 1], roi[1, 0]: roi[1, 1]]
-                    for roi in self._xy_rois]
-        x = self._last_params['x']
-        y = self._last_params['y']
-        s = self._last_params['s']
-        locs = _np.array(tuple(self._executor.map(_gaussian_fit, trimmeds, x, y, s)))
-        self._last_params['x'] = locs[:, 0]
+        trimmeds = [
+            image[roi[0, 0]: roi[0, 1], roi[1, 0]: roi[1, 1]]
+            for roi in self._xy_rois
+        ]
+        x = self._last_params["x"]
+        y = self._last_params["y"]
+        s = self._last_params["s"]
+        locs = _np.array(
+            tuple(self._executor.map(_gaussian_fit, trimmeds, x, y, s))
+        )
+        self._last_params["x"] = locs[:, 0]
         nanloc = _np.isnan(locs[:, 0])  # if x is nan, y also is nan
-        self._last_params['x'][nanloc] = x[nanloc]
-        self._last_params['y'] = locs[:, 1]
-        self._last_params['y'][nanloc] = y[nanloc]
-        self._last_params['s'] = locs[:, 2]
-        self._last_params['s'][nanloc] = s[nanloc]
+        self._last_params["x"][nanloc] = x[nanloc]
+        self._last_params["y"] = locs[:, 1]
+        self._last_params["y"][nanloc] = y[nanloc]
+        self._last_params["s"] = locs[:, 2]
+        self._last_params["s"][nanloc] = s[nanloc]
         rv = locs[:, :2] + self._xy_rois[:, 0, :]
         rv *= self._nmpp_xy
         return rv
@@ -428,18 +458,22 @@ class StabilizerThread(_th.Thread):
 
         All values are *in pixels* inside each ROI.
 
-        TODO: Protect against errors (image must exist, ROIS must fit into image, etc.)
+        TODO: Protect against errors (image must exist, ROIS must fit into
+        image, etc.)
         """
-        trimmeds = [self._last_image[roi[0, 0]:roi[0, 1], roi[1, 0]: roi[1, 1]]
-                    for roi in self._xy_rois]
-        pos_max = [_np.unravel_index(_np.argmax(data), data.shape) for data in
-                   trimmeds]
+        trimmeds = [
+            self._last_image[roi[0, 0]: roi[0, 1], roi[1, 0]: roi[1, 1]]
+            for roi in self._xy_rois
+        ]
+        pos_max = [
+            _np.unravel_index(_np.argmax(data), data.shape) for data in trimmeds
+        ]
         sigmas = [data.shape[0] / 3 for data in trimmeds]
         self._last_params = {
-            'x': _np.array([p[0] for p in pos_max], dtype=float),
-            'y': _np.array([p[1] for p in pos_max], dtype=float),
-            's': _np.array(sigmas, dtype=float),
-            }
+            "x": _np.array([p[0] for p in pos_max], dtype=float),
+            "y": _np.array([p[1] for p in pos_max], dtype=float),
+            "s": _np.array(sigmas, dtype=float),
+        }
 
     def _locate_z_center(self, image: _np.ndarray) -> float:
         """Locate the center of the reflection used to infer Z position."""
@@ -448,7 +482,10 @@ class StabilizerThread(_th.Thread):
             return _np.nan
         roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
         # ang is measured counterclockwise from the X axis. We rotate *clockwise*
-        rv = _np.sum(_np.array(_sp.ndimage.center_of_mass(roi)) * self._rot_vec) * self._nmpp_z
+        rv = (
+            _np.sum(_np.array(_sp.ndimage.center_of_mass(roi)) * self._rot_vec)
+            * self._nmpp_z
+        )
         return rv
 
     def _move_relative(self, dx: float, dy: float, dz: float):
@@ -458,8 +495,13 @@ class StabilizerThread(_th.Thread):
         self._pos[2] += dz
         self._piezo.set_position(*self._pos)
 
-    def _report(self, t: float, image: _np.ndarray,
-                xy_shifts: _Union[_np.ndarray, None], z_shift: float):
+    def _report(
+        self,
+        t: float,
+        image: _np.ndarray,
+        xy_shifts: _Union[_np.ndarray, None],
+        z_shift: float,
+    ):
         """Send data to provided callback."""
         if xy_shifts is None:
             xy_shifts = _np.empty((0,))
@@ -468,10 +510,13 @@ class StabilizerThread(_th.Thread):
             try:
                 self._cb(rv)
             except Exception as e:
-                _lgr.warning("Exception reporting to callback: %s(%s)", type(e), e)
+                _lgr.warning(
+                    "Exception reporting to callback: %s(%s)", type(e), e
+                )
 
-    def _calibrate_xy(self, length: float, initial_xy_positions: _np.ndarray,
-                      points: int = 20):
+    def _calibrate_xy(
+        self, length: float, initial_xy_positions: _np.ndarray, points: int = 20
+    ):
         """Calibrate nm per pixel in XY plane.
 
         Runs it own small loop.
@@ -489,7 +534,9 @@ class StabilizerThread(_th.Thread):
             number of calibration points
         """
         c_idx = self._calib_idx  # 0 for X, 1 for Y, Z is complicated
-        shifts, step = _np.linspace(-length/2., length/2., points, retstep=True)
+        shifts, step = _np.linspace(
+            -length / 2.0, length / 2.0, points, retstep=True
+        )
         response = _np.empty_like(shifts)
         if self._xy_rois is None:
             _lgr.warning("Trying to calibrate xy without ROIs")
@@ -500,7 +547,7 @@ class StabilizerThread(_th.Thread):
         oldpos = _np.copy(self._pos)
         rel_vec = _np.zeros((3,))
         try:
-            rel_vec[c_idx] = -length/2.
+            rel_vec[c_idx] = -length / 2.0
             self._move_relative(*rel_vec)
             rel_vec[c_idx] = step
             image = self._camera.get_image()
@@ -508,24 +555,28 @@ class StabilizerThread(_th.Thread):
             for idx, s in enumerate(shifts):
                 image = self._camera.get_image()
                 xy_shifts = self._locate_xy_centers(image)
-                self._report(_time.time(), image, xy_shifts - initial_xy_positions, 0)
+                self._report(
+                    _time.time(), image, xy_shifts - initial_xy_positions, 0
+                )
                 x = _np.nanmean(xy_shifts[:, c_idx])
                 response[idx] = x / self._nmpp_xy
                 self._move_relative(*rel_vec)
-                _time.sleep(.050)
+                _time.sleep(0.050)
             # TODO: better reporting
             for x, y in zip(shifts, response):
                 print(f"{x}, {y}")
-            vec, _ = _np.linalg.lstsq(_np.vstack([shifts, _np.ones(points)]).T,
-                                      response, rcond=None)[0]
-            print("slope = ", 1/vec)
+            vec, _ = _np.linalg.lstsq(
+                _np.vstack([shifts, _np.ones(points)]).T, response, rcond=None
+            )[0]
+            print("slope = ", 1 / vec)
         except Exception as e:
             _lgr.warning("Exception calibrating x: %s(%s)", type(e), e)
         self._pos[:] = oldpos
         self._piezo.set_position(*self._pos)
 
-    def _calibrate_z(self, length: float, initial_xy_positions: _np.ndarray,
-                     points: int = 20):
+    def _calibrate_z(
+        self, length: float, initial_xy_positions: _np.ndarray, points: int = 20
+    ):
         """Calibrate nm per pixel when Z shifts.
 
         Runs its own loop.
@@ -539,8 +590,15 @@ class StabilizerThread(_th.Thread):
         points: int, default 20
             number of calibration points
         """
-        shifts, step = _np.linspace(-length/2., length/2., points, retstep=True)
-        response = _np.empty((points, 2, ))
+        shifts, step = _np.linspace(
+            -length / 2.0, length / 2.0, points, retstep=True
+        )
+        response = _np.empty(
+            (
+                points,
+                2,
+            )
+        )
         if self._z_roi is None:
             _lgr.warning("Trying to calibrate z without ROI")
             return False
@@ -550,7 +608,7 @@ class StabilizerThread(_th.Thread):
         oldpos = _np.copy(self._pos)
         rel_vec = _np.zeros((3,))
         try:
-            rel_vec[2] = -length/2.
+            rel_vec[2] = -length / 2.0
             self._move_relative(*rel_vec)
             rel_vec[2] = step
             image = self._camera.get_image()
@@ -558,19 +616,23 @@ class StabilizerThread(_th.Thread):
                 image = self._camera.get_image()
                 roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
                 c = _np.array(_sp.ndimage.center_of_mass(roi))
-                xy_data = (None if self._xy_rois is None else
-                           self._locate_xy_centers(image) - initial_xy_positions)
+                xy_data = (
+                    None
+                    if self._xy_rois is None
+                    else self._locate_xy_centers(image) - initial_xy_positions
+                )
                 self._report(_time.time(), image, xy_data, _np.nan)
                 response[idx] = c
                 self._move_relative(*rel_vec)
-                _time.sleep(.050)
+                _time.sleep(0.050)
             # TODO: better reporting
             for x, y in zip(shifts, response):
                 print(f"{x}, {y}")
-            vec, _ = _np.linalg.lstsq(_np.vstack([shifts, _np.ones(points)]).T,
-                                      response, rcond=None)[0]
-            print("slope = ", 1/vec)
-            print("nmpp z = ", _np.sum(1./vec**2)**.5)
+            vec, _ = _np.linalg.lstsq(
+                _np.vstack([shifts, _np.ones(points)]).T, response, rcond=None
+            )[0]
+            print("slope = ", 1 / vec)
+            print("nmpp z = ", _np.sum(1.0 / vec**2) ** 0.5)
             # watch out order
             print("Angle(rad) = ", _np.arctan2(vec[1], vec[0]))
         except Exception as e:
@@ -592,12 +654,12 @@ class StabilizerThread(_th.Thread):
                 _lgr.debug("Calibration event received")
                 if self._calib_idx >= 0 and self._calib_idx < 2:
                     if self._xy_tracking:
-                        self._calibrate_xy(50., initial_xy_positions)
+                        self._calibrate_xy(50.0, initial_xy_positions)
                     else:
                         _lgr.warning("can not calibrate XY without tracking")
-                elif self._calib_idx ==2:
+                elif self._calib_idx == 2:
                     if self._z_tracking:
-                        self._calibrate_z(50., initial_xy_positions)
+                        self._calibrate_z(50.0, initial_xy_positions)
                     else:
                         _lgr.warning("can not calibrate Z without tracking")
                 else:
@@ -611,8 +673,12 @@ class StabilizerThread(_th.Thread):
                 _lgr.error("Could not acquire image: %s (%s)", type(e), e)
                 image = _np.diag(_np.full(max(*self._last_image.shape), 255))
                 t = _time.time()
-                self._report(t, image,
-                             _np.full_like(initial_xy_positions, _np.nan), _np.nan)
+                self._report(
+                    t,
+                    image,
+                    _np.full_like(initial_xy_positions, _np.nan),
+                    _np.nan,
+                )
                 _time.sleep(self._period)
                 continue
             if not self._xy_track_event.is_set():
@@ -637,7 +703,9 @@ class StabilizerThread(_th.Thread):
                     _lgr.warning("z shift is NAN")
                     z_shift = 0.0
                 try:
-                    x_resp, y_resp, z_resp = self._rsp.response(t, xy_shifts, z_shift)
+                    x_resp, y_resp, z_resp = self._rsp.response(
+                        t, xy_shifts, z_shift
+                    )
                 except Exception as e:
                     _lgr.warning("Error getting correction: %s, %s", e, type(e))
                     x_resp = y_resp = z_resp = 0.0

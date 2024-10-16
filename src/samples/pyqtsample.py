@@ -19,7 +19,7 @@ Use:
 import logging as _lgn
 
 from frontends.PyQt_frontend import Frontend
-from PyQt5.QtWidgets import (QApplication, )
+from PyQt5.QtWidgets import QApplication
 
 from takyaq.responders import PIReactor
 from takyaq.mocks import MockCamera, MockPiezo
@@ -33,18 +33,22 @@ _lgr.setLevel(_lgn.DEBUG)
 # Constants for camera mock
 _CAMERA_XY_NMPPX = 23.5
 _CAMERA_Z_NMPPX = 10
-_CAMERA_Z_ROTATION = 3.1415/4
+_CAMERA_Z_ROTATION = 3.1415 / 4
 
 
 if __name__ == "__main__":
-    camera_info = CameraInfo(_CAMERA_XY_NMPPX, _CAMERA_Z_NMPPX, _CAMERA_Z_ROTATION,)
+    camera_info = CameraInfo(
+        _CAMERA_XY_NMPPX,
+        _CAMERA_Z_NMPPX,
+        _CAMERA_Z_ROTATION,
+    )
     # Mock camera, replace with a real one
     camera = MockCamera(
         _CAMERA_XY_NMPPX,
         _CAMERA_XY_NMPPX,
         _CAMERA_Z_NMPPX,
         _CAMERA_XY_NMPPX * 7,  # en pixeles
-        3.1415/4,
+        _CAMERA_Z_ROTATION,
         1,  # Center position noise in pixels
         10,
     )

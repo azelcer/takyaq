@@ -38,7 +38,7 @@ import pyqtgraph as pg
 
 import logging as _lgn
 
-from takyaq.estabilizador import Stabilizer, PointInfo, ROI, CameraInfo
+from takyaq.stabilizer import Stabilizer, PointInfo, ROI, CameraInfo
 
 import takyaq.base_classes as _bc
 
