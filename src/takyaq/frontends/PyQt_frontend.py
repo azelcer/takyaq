@@ -16,7 +16,7 @@ Use:
     - Start correction of XY and Z positions.
 
 """
-import numpy as np
+import numpy as _np
 import time as _time
 import warnings
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject, Qt
@@ -33,12 +33,11 @@ from PyQt5.QtWidgets import (
     QLineEdit,
 )
 from PyQt5.QtGui import QDoubleValidator
-
-import pyqtgraph as pg
+import pyqtgraph as _pg
 
 import logging as _lgn
 
-from takyaq.stabilizer import Stabilizer, PointInfo, ROI, CameraInfo
+from ..stabilizer import Stabilizer, PointInfo, ROI, CameraInfo
 
 import takyaq.base_classes as _bc
 
@@ -46,19 +45,12 @@ _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
 
 
-def qtROI2Limits(roi: pg.ROI):
-    """Translate pyqtgraphs's ROIs position and size to our ROIS"""
-    x, y = roi.pos()
-    w, h = roi.size()
-    return ROI(x, x + w, y, y + h)
-
-
 class GroupedCheckBoxes:
     """Manages grouped CheckBoxes states.
 
-    This is a helper class to ease GUI implementation. It implements an 'All' checkbox
-    that controls and stays sinchronized with other. It should be used carefully to
-    avoid state changes loops.
+    This is a helper class to ease GUI implementation. It implements an 'All'
+    checkbox that controls and stays sinchronized with others. It should be used
+    carefully to avoid state changes loops.
     """
 
     def __init__(self, all_checkbox: QCheckBox, *other_checkboxes):
@@ -68,7 +60,7 @@ class GroupedCheckBoxes:
         ----------
         all_checkbox : QCheckBox
             The checkbox that checks/unchecks all others.
-        *other_checkboxes : TYPE
+        *other_checkboxes : Iterable[QCheckBox]
             All other checkboxes.
         """
         self.acb = all_checkbox
@@ -96,7 +88,7 @@ class QReader(QObject):
     In this case (a PyQT application), we emit a signal to the GUI.
     """
 
-    new_data = pyqtSignal(float, np.ndarray, float, np.ndarray)
+    new_data = pyqtSignal(float, _np.ndarray, float, _np.ndarray)
 
     def cb(self, data: PointInfo):
         """Report data."""
@@ -116,9 +108,9 @@ class Frontend(QFrame):
     Implemented as a QFrame so it can be easily integrated within a larger app.
     """
 
-    _t_data = np.full((_MAX_POINTS,), np.nan)
-    _z_data = np.full((_MAX_POINTS,), np.nan)
-    _x_data = np.full((_MAX_POINTS, 0), np.nan)
+    _t_data = _np.full((_MAX_POINTS,), _np.nan)
+    _z_data = _np.full((_MAX_POINTS,), _np.nan)
+    _x_data = _np.full((_MAX_POINTS, 0), _np.nan)
     _graph_pos = 0  # for graphics and statistics
     _save_pos = 0
 
@@ -126,7 +118,7 @@ class Frontend(QFrame):
     _y_plots = []
     _roilist = []
     _z_ROI = None
-    lastimage: np.ndarray = None
+    lastimage: _np.ndarray = None
     _z_tracking_enabled: bool = False
     _xy_tracking_enabled: bool = False
     _z_locking_enabled: bool = False
@@ -163,20 +155,20 @@ class Frontend(QFrame):
 
         Also resets base timer
         """
-        self._I_data = np.full((_MAX_POINTS,), np.nan)
-        self._t_data = np.full((_MAX_POINTS,), np.nan)
+        self._I_data = _np.full((_MAX_POINTS,), _np.nan)
+        self._t_data = _np.full((_MAX_POINTS,), _np.nan)
         self._graph_pos = 0
         self._save_pos = 0
         self._t0 = _time.time()
 
     def reset_xy_data_buffers(self, roi_len: int):
         """Reset data buffers related to XY localization."""
-        self._x_data = np.full((_MAX_POINTS, roi_len), np.nan)  # sample #, roi
-        self._y_data = np.full((_MAX_POINTS, roi_len), np.nan)  # sample #, roi
+        self._x_data = _np.full((_MAX_POINTS, roi_len), _np.nan)  # sample #, roi
+        self._y_data = _np.full((_MAX_POINTS, roi_len), _np.nan)  # sample #, roi
 
     def reset_z_data_buffers(self):
         """Reset data buffers related to Z localization."""
-        self._z_data = np.full((_MAX_POINTS,), np.nan)
+        self._z_data = _np.full((_MAX_POINTS,), _np.nan)
 
     def reset_graphs(self, roi_len: int):
         """Reset graphs contents and adjust to number of XY ROIs."""
@@ -220,7 +212,7 @@ class Frontend(QFrame):
         w, h = self.lastimage.shape[0:2]
         ROIpos = (w / 2 - _XY_ROI_SIZE / 2, h / 2 - _XY_ROI_SIZE / 2)
         ROIsize = (_XY_ROI_SIZE, _XY_ROI_SIZE)
-        roi = pg.ROI(ROIpos, ROIsize, rotatable=False)
+        roi = _pg.ROI(ROIpos, ROIsize, rotatable=False)
         roi.addScaleHandle((1, 0), (0, 1), lockAspect=True)
         self.image_pi.addItem(roi)
         self._roilist.append(roi)
@@ -247,7 +239,7 @@ class Frontend(QFrame):
         w, h = self.lastimage.shape[0:2]
         ROIpos = (w / 2 - _Z_ROI_SIZE / 2, h / 2 - _Z_ROI_SIZE / 2)
         ROIsize = (_Z_ROI_SIZE, _Z_ROI_SIZE)
-        roi = pg.ROI(ROIpos, ROIsize, pen={"color": "red", "width": 2}, rotatable=False)
+        roi = _pg.ROI(ROIpos, ROIsize, pen={"color": "red", "width": 2}, rotatable=False)
         roi.addScaleHandle((1, 0), (0, 1), lockAspect=True)
         self.image_pi.addItem(roi)
         self._z_ROI = roi
@@ -312,7 +304,7 @@ class Frontend(QFrame):
             self.reset_xy_data_buffers(len(self._roilist))
             if not self._z_tracking_enabled:
                 self.reset_data_buffers()
-            self._est.set_xy_rois([qtROI2Limits(roi) for roi in self._roilist])
+            self._est.set_xy_rois([ROI.from_pyqtgraph(roi) for roi in self._roilist])
             self._est.set_xy_tracking(True)
             self._xy_tracking_enabled = True
 
@@ -347,8 +339,8 @@ class Frontend(QFrame):
     def _calibrate_z(self, clicked: bool):
         self._est.calibrate('z')
 
-    @pyqtSlot(float, np.ndarray, float, np.ndarray)
-    def get_data(self, t: float, img: np.ndarray, z: float, xy_shifts: np.ndarray):
+    @pyqtSlot(float, _np.ndarray, float, _np.ndarray)
+    def get_data(self, t: float, img: _np.ndarray, z: float, xy_shifts: _np.ndarray):
         """Receive data from the stabilizer and graph it."""
         # Ver si grabar
         if self._save_pos >= _SAVE_PERIOD:  # y grabar activado
@@ -367,7 +359,7 @@ class Frontend(QFrame):
         # manage image data
         self.img.setImage(img, autoLevels=self.lastimage is None)
         self.lastimage = img
-        self._I_data[self._graph_pos] = np.average(img)
+        self._I_data[self._graph_pos] = _np.average(img)
         self._t_data[self._graph_pos] = t
         t_data = self._t_data[: self._graph_pos + 1] - self._t0
         self.avgIntCurve.setData(t_data, self._I_data[: self._graph_pos + 1])
@@ -378,14 +370,14 @@ class Frontend(QFrame):
             # update reports
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                self.zstd_value.setText(f"{np.nanstd(self._z_data[:self._graph_pos]):.2f}")
+                self.zstd_value.setText(f"{_np.nanstd(self._z_data[:self._graph_pos]):.2f}")
             # update Graphs
             z_data = self._z_data[: self._graph_pos + 1]
             self.zCurve.setData(t_data, z_data)
             try:  # It is possible to have all NANs data
-                hist, bin_edges = np.histogram(z_data, bins=30)
+                hist, bin_edges = _np.histogram(z_data, bins=30)
                 self.zHistogram.setOpts(
-                    x=np.mean((bin_edges[:-1], bin_edges[1:],), axis=0),
+                    x=_np.mean((bin_edges[:-1], bin_edges[1:],), axis=0),
                     height=hist,
                     width=bin_edges[1]-bin_edges[0]
                     )
@@ -395,20 +387,20 @@ class Frontend(QFrame):
         if self._xy_tracking_enabled and xy_shifts.shape[0]:
             self._x_data[self._graph_pos] = xy_shifts[:, 0]
             self._y_data[self._graph_pos] = xy_shifts[:, 1]
-            # t_data = np.copy(t_data)
+            # t_data = _np.copy(t_data)
 
             x_data = self._x_data[: self._graph_pos + 1]
             y_data = self._y_data[: self._graph_pos + 1]
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                x_mean = np.nanmean(x_data, axis=1)
-                y_mean = np.nanmean(y_data, axis=1)
+                x_mean = _np.nanmean(x_data, axis=1)
+                y_mean = _np.nanmean(y_data, axis=1)
                 # update reports
                 self.xstd_value.setText(
-                    f"{np.nanstd(self._x_data[:self._graph_pos + 1]):.2f}"
+                    f"{_np.nanstd(self._x_data[:self._graph_pos + 1]):.2f}"
                 )
                 self.ystd_value.setText(
-                    f"{np.nanstd(self._y_data[:self._graph_pos + 1]):.2f}"
+                    f"{_np.nanstd(self._y_data[:self._graph_pos + 1]):.2f}"
                 )
             # update Graphs
             for i, p in enumerate(self._x_plots):
@@ -428,16 +420,16 @@ class Frontend(QFrame):
         self.setLayout(grid)
 
         # image widget layout
-        imageWidget = pg.GraphicsLayoutWidget()
+        imageWidget = _pg.GraphicsLayoutWidget()
         imageWidget.setMinimumHeight(250)
         imageWidget.setMinimumWidth(350)
 
         # setup axis
-        self.xaxis = pg.AxisItem(orientation="bottom", maxTickLength=5)
+        self.xaxis = _pg.AxisItem(orientation="bottom", maxTickLength=5)
         self.xaxis.showLabel(show=True)
         self.xaxis.setLabel("x", units="µm")
 
-        self.yaxis = pg.AxisItem(orientation="left", maxTickLength=5)
+        self.yaxis = _pg.AxisItem(orientation="left", maxTickLength=5)
         self.yaxis.showLabel(show=True)
         self.yaxis.setLabel("y", units="µm")
         self.xaxis.setScale(scale=self._camera_info.nm_ppx_xy / 1000)
@@ -447,20 +439,20 @@ class Frontend(QFrame):
             axisItems={"bottom": self.xaxis, "left": self.yaxis}
         )
         self.image_pi.setAspectLocked(True)
-        self.img = pg.ImageItem()
+        self.img = _pg.ImageItem()
         imageWidget.translate(-0.5, -0.5)
         self.image_pi.addItem(self.img)
         self.image_pi.setAspectLocked(True)
         imageWidget.setAspectLocked(True)
 
-        self.hist = pg.HistogramLUTItem(image=self.img)
+        self.hist = _pg.HistogramLUTItem(image=self.img)
         self.hist.gradient.loadPreset("viridis")
         imageWidget.addItem(self.hist, row=0, col=1)
 
         # parameters widget
         self.paramWidget = QGroupBox("Tracking and feedback")
         self.paramWidget.setMinimumHeight(200)
-        self.paramWidget.setFixedWidth(270)
+        self.paramWidget.setMinimumWidth(270)
 
         # ROI buttons
         self.xyROIButton = QPushButton("xy ROI")
@@ -565,7 +557,7 @@ class Frontend(QFrame):
         self.statWidget.setMinimumWidth(120)
 
         # drift and signal inensity graphs
-        self.xyzGraph = pg.GraphicsLayoutWidget()
+        self.xyzGraph = _pg.GraphicsLayoutWidget()
         self.xyzGraph.setAntialiasing(True)
 
         # TODO: Wrap boilerplate into a function
@@ -592,7 +584,7 @@ class Frontend(QFrame):
         self.avgIntCurve = self.xyzGraph.avgIntPlot.plot(pen="g")
 
         # xy drift graph (2D point plot)
-        self.xyPoint = pg.GraphicsLayoutWidget()
+        self.xyPoint = _pg.GraphicsLayoutWidget()
         self.xyPoint.resize(400, 400)
         self.xyPoint.setAntialiasing(False)
 
@@ -607,10 +599,10 @@ class Frontend(QFrame):
         )
 
         # z drift graph (1D histogram)
-        x = np.arange(-20, 20)
-        y = np.zeros(len(x))
+        x = _np.arange(-20, 20)
+        y = _np.zeros(len(x))
 
-        self.zHistogram = pg.BarGraphItem(x=x, height=y, width=0.5, brush="#008a19")
+        self.zHistogram = _pg.BarGraphItem(x=x, height=y, width=0.5, brush="#008a19")
         self.zPlot = self.xyPoint.addPlot()
         self.zPlot.addItem(self.zHistogram)
 
@@ -634,14 +626,14 @@ if __name__ == "__main__":
 
     _CAMERA_XY_NMPPX = 23.5
     _CAMERA_Z_NMPPX = 10
-    camera_info = CameraInfo(_CAMERA_XY_NMPPX, _CAMERA_Z_NMPPX, np.pi/4,)
+    camera_info = CameraInfo(_CAMERA_XY_NMPPX, _CAMERA_Z_NMPPX, _np.pi/4,)
 
     camera = mocks.MockCamera(
         _CAMERA_XY_NMPPX,
         _CAMERA_XY_NMPPX,
         _CAMERA_Z_NMPPX,
         _CAMERA_XY_NMPPX * 17,  # en pixeles
-        np.pi/4,
+        _np.pi/4,
         1,  # Center position noise in pixels
         10,
     )

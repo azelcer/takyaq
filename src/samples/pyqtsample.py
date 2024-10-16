@@ -18,7 +18,7 @@ Use:
 """
 import logging as _lgn
 
-from frontends.PyQt_frontend import Frontend
+from takyaq.frontends.PyQt_frontend import Frontend
 from PyQt5.QtWidgets import QApplication
 
 from takyaq.responders import PIReactor
