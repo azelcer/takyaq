@@ -15,10 +15,9 @@ import os as _os
 from typing import Callable as _Callable
 from concurrent.futures import ProcessPoolExecutor as _PPE
 import warnings as _warnings
-from typing import Union
+from typing import Union as _Union
 from .info_types import ROI, PointInfo, CameraInfo
-import takyaq.base_classes as _bc
-
+from . import base_classes as _bc
 
 _lgn.basicConfig()
 _lgr = _lgn.getLogger(__name__)
@@ -103,7 +102,14 @@ def _gaussian_fit(data: _np.ndarray, x_max: float, y_max: float,
 
 
 class StabilizerThread(_th.Thread):
-    """Wraps a stabilization thread."""
+    """Wraps a stabilization thread.
+
+    As usual, functions names beggining with an underscore do not belong to the public
+    interface.
+
+    Functions that *do* belong to the public interface communicate with the running
+    thread relying on the GIL (like setting a value) or in events.
+    """
 
     # Status flags
     _xy_tracking: bool = False
@@ -168,6 +174,10 @@ class StabilizerThread(_th.Thread):
         self._calibrate_event = _th.Event()
         self._rsp = corrector
         self._cb = callback
+        self._old_run = self.run
+        self.run = self._donotcall
+        self._old_start = self.start
+        self.start = self._donotcall
 
     def set_log_level(self, loglevel: int):
         """Set log level for module."""
@@ -206,7 +216,7 @@ class StabilizerThread(_th.Thread):
 
         Parameters
         ----------
-        rois: list[ROI]
+        rois: list[info_types.ROI]
             list of XY rois
 
         Return
@@ -301,7 +311,6 @@ class StabilizerThread(_th.Thread):
         if self._z_roi is None:
             _lgr.warning("Trying to enable z tracking without ROI")
             return False
-
         self._z_tracking = True
         return True
 
@@ -364,7 +373,9 @@ class StabilizerThread(_th.Thread):
             _warnings.simplefilter("ignore")  # FIXME: dudo que esto funcione
             _ = tuple(self._executor.map(_gaussian_fit, *params))
         self._stop_event.clear()
-        self.start()
+        self.run = self._old_run
+        self._old_start()
+        self.run = self._donotcall
         return True
 
     def stop_loop(self):
@@ -376,6 +387,10 @@ class StabilizerThread(_th.Thread):
         self.join()
         self._executor.shutdown()
         _lgr.debug("Loop ended")
+
+    def _donotcall(self, *args, **kwargs):
+        """Advice against running forbidden functions."""
+        raise ValueError("Do not call this function directly")
 
     def _locate_xy_centers(self, image: _np.ndarray) -> _np.ndarray:
         """Locate centers in XY ROIS.
@@ -444,7 +459,7 @@ class StabilizerThread(_th.Thread):
         self._piezo.set_position(*self._pos)
 
     def _report(self, t: float, image: _np.ndarray,
-                xy_shifts: Union[_np.ndarray, None], z_shift: float):
+                xy_shifts: _Union[_np.ndarray, None], z_shift: float):
         """Send data to provided callback."""
         if xy_shifts is None:
             xy_shifts = _np.empty((0,))
@@ -511,7 +526,7 @@ class StabilizerThread(_th.Thread):
 
     def _calibrate_z(self, length: float, initial_xy_positions: _np.ndarray,
                      points: int = 20):
-        """Calibrate Znm per pixel.
+        """Calibrate nm per pixel when Z shifts.
 
         Runs its own loop.
 
