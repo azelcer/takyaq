@@ -517,6 +517,7 @@ class Frontend(QFrame):
         self.delay_le.setValidator(QDoubleValidator(1E-3, 1., 3))
         self.set_delay_button = QPushButton('Set Delay')
         self.set_delay_button.clicked.connect(self._set_delay)
+        delay_layout.addWidget(QLabel("Delay / s"))
         delay_layout.addWidget(self.delay_le)
         delay_layout.addWidget(self.set_delay_button)
 
