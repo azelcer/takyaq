@@ -2,8 +2,7 @@
 """
 Created on Wed Jul  3 14:55:43 2024
 
-The module shows how to implement an object that decides how to react after a
-fiduciary localization event
+The module implement objects that react after a fiduciary localization event
 
 @author: azelcer
 """
@@ -18,8 +17,8 @@ _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
 
 
-class BaseReactor:
-    """Simple Reactor. Basically a proportional response."""
+class ProportionalController:
+    """Simple Controller. Just a the same proportional response for all axes."""
 
     _multiplier = 1.0
 
@@ -61,33 +60,40 @@ class BaseReactor:
             y_shift = 0.0
 
         return (-x_shift * self._multiplier, -y_shift * self._multiplier,
-                z_shift * self._multiplier)
+                -z_shift * self._multiplier)
 
 
-class PIReactor:
-    """PI Reactor. Proportional Integral."""
+class PIController:
+    """PI Controller. Proportional Integral."""
 
     _Kp = _np.ones((3,))
     _Ki = _np.ones((3,))
     _cum = _np.zeros((3,))
-    _invert = _np.array([-1, -1, 1])
-    lasttime = 0
+    _last_times = _np.zeros((3,))
 
     def __init__(self, Kp: _Union[float, _Collection[float]] = 1.,
                  Ki: _Union[float, _Collection[float]] = 1.):
+        """Proportional controller.
+
+        Parameters
+        ==========
+            Kp: float or collection[3]
+                Proportional term constant. Single value or one for x, y, and z
+            Ki: float or collection[3]
+                Intergral term constant. Single value or one for x, y, and z
+        """
         self._Kp[:] = _np.array(Kp)
         self._Ki[:] = _np.array(Ki)
 
     def reset_xy(self, n_xy_rois: int):
         """Initialize all neccesary internal structures."""
         self._cum[0:2] = 0.
-        self.lasttime = 0
-        # TODO: See how to manage lasttime z and XY
+        self._last_times[0:2] = 0.
 
     def reset_z(self):
         """Initialize all neccesary internal structures."""
         self._cum[2] = 0.
-        self.lasttime = 0
+        self._last_times[2] = 0.
 
     def response(self, t: float, xy_shifts: _Optional[_np.ndarray], z_shift: float):
         """Process a mesaurement of the displacements.
@@ -110,38 +116,47 @@ class PIReactor:
                 y_shift = 0.0
 
         error = _np.array((x_shift, y_shift, z_shift))
-        if not self.lasttime:
-            self.lasttime = t
-        self._cum += error * (t - self.lasttime)  # TODO: protect against suspended processes
-        self.lasttime = t
+        self._last_times[_np.where(self._last_times <= 0.)] = t
+        delta_t = t - self._last_times
+        delta_t[_np.where(delta_t > 1)] = 1.  # protect against suspended processes
+        self._cum += error * delta_t
+        self._last_times[:] = t
         rv = error * self._Kp + self._Ki * self._cum
-        return rv * self._invert
+        return -rv
 
 
-class PIDReactor:
-    """PID Reactor. mean of last 5 derivatives used as derivative param"""
+class PIDController:
+    """PID Controller. mean of last 5 derivatives used as derivative param."""
 
-    _Kp = _np.ones((3,)) * .85
-    _Ki = _np.ones((3,)) * .30
-    _Kd = _np.ones((3,)) * .15
+    _Kp = _np.ones((3,))
+    _Ki = _np.ones((3,))
+    _Kd = _np.ones((3,))
     _deriv = _np.zeros((3,))
     _last_e = _np.zeros((3,))
     _cum = _np.zeros((3,))
-    _N_VALS = 5
     next_val = 0
-    _last_deriv = _np.full((_N_VALS, 3,), _np.nan)
-    _invert = _np.array([-1, -1, 1])
+    _last_deriv = _np.full((1, 3,), _np.nan)
     lasttime = 0.
+
+    def __init__(self, Kp: _Union[float, _Collection[float]] = 1.,
+                 Ki: _Union[float, _Collection[float]] = 1.,
+                 Kd: _Union[float, _Collection[float]] = 1.,
+                 deriv_points: int = 10):
+        self._Kp[:] = _np.array(Kp)
+        self._Ki[:] = _np.array(Ki)
+        self._Kd[:] = _np.array(Kd)
+        self._deriv_points = deriv_points
+        self._last_deriv = _np.full((deriv_points, 3,), _np.nan)
 
     def reset_xy(self, n_xy_rois: int):
         """Initialize all neccesary internal structures."""
         self._cum[0:2] = 0.
-        pass
+        self._last_deriv[:, 0:2] = 0
 
     def reset_z(self):
         """Initialize all neccesary internal structures."""
         self._cum[2] = 0.
-        pass
+        self._last_deriv[:, 2] = 0.
 
     def response(self, t: float, xy_shifts: _Optional[_np.ndarray], z_shift: float):
         """Process a mesaurement of the displacements.
@@ -166,118 +181,69 @@ class PIDReactor:
         if not self.lasttime:
             self.lasttime = t
         error = _np.array((x_shift, y_shift, z_shift))
-        self._cum += error * (t - self.lasttime)
-        d = error - self._last_e
+        if not self.lasttime:
+            self.lasttime = t
+        delta_t = t - self.lasttime
+        if delta_t > 1.:  # protect against suspended processes
+            delta_t = 1.
+        self._cum += error * delta_t
+        d = (error - self._last_e) / delta_t
         self._last_deriv[self.next_val] = d
         self.next_val = (self.next_val + 1) % self._N_VALS
         self._deriv = _np.nansum(self._last_deriv, axis=0) / self._N_VALS
         rv = error * self._Kp + self._Ki * self._cum + self._Kd * self._deriv
         self._last_e = error
         self.lasttime = t
-        return rv * self._invert
+        return rv
 
 
-class PIDReactor2:
-    """Modified PID Reactor. Proportional, short-time Integral, Derivative."""
+# class ScaledReactor:
+#     """Proportional/partial response for large/small distances."""
 
-    _Kp = _np.ones((3,)) * .85
-    _Ki = _np.ones((3,)) * .30
-    _Kd = _np.ones((3,)) * .15
-    _deriv = _np.zeros((3,))
-    _last_e = _np.zeros((3,))
-    _cum = _np.zeros((3,))
-    _fact = 0.5
-    lasttime = 0.
+#     _multiplier = 1.0
 
-    def reset_xy(self, n_xy_rois: int):
-        """Initialize all neccesary internal structures."""
-        self._cum[0:2] = 0.
-        pass
+#     def __init__(self, xylimit: float = 3., zlimit: float = 5.,
+#                  multiplier: float = 1.):
+#         self._multiplier = multiplier
+#         self._factor = 1. / _np.array((xylimit, xylimit, zlimit), dtype=_np.float64)
+#         self._buffer = _np.ones((2, 3,), dtype=_np.float64)
 
-    def reset_z(self):
-        """Initialize all neccesary internal structures."""
-        self._cum[2] = 0.
-        pass
+#     def reset_xy(self, n_xy_rois: int):
+#         """Initialize all neccesary internal structures.
 
-    def response(self, t: float, xy_shifts: _Optional[_np.ndarray], z_shift: float):
-        """Process a mesaurement of the displacements.
+#         Not needed.
+#         """
+#         pass
 
-        Any parameter can be NAN, so we have to take it into account.
+#     def reset_z(self):
+#         """Initialize all neccesary internal structures.
 
-        If xy_shifts has not been measured, a None will be received.
+#         Not needed.
+#         """
+#         pass
 
-        Must return a 3-item tuple representing the response in x, y and z
-        """
-        if xy_shifts is None:
-            x_shift = y_shift = 0.0
-        else:
-            x_shift, y_shift = _np.nanmean(xy_shifts, axis=0)
-        if x_shift is _np.nan:
-            _lgr.warning("x shift is NAN")
-            x_shift = 0.0
-        if y_shift is _np.nan:
-            _lgr.warning("y shift is NAN")
-            y_shift = 0.0
+#     def response(self, t: float, xy_shifts: _Optional[_np.ndarray], z_shift: float):
+#         """Process a mesaurement of the displacements.
 
-        if not self.lasttime:
-            self.lasttime = t
-        error = _np.array((x_shift, y_shift, z_shift))
-        self._cum = self._cum * self._fact + error * (t - self.lasttime)
-        d = error - self._last_e
-        self._deriv = self._deriv * self._fact + d
-        rv = error * self._Kp + self._Ki * self._cum + self._Kd * self._deriv
-        self._last_e = error
-        self.lasttime = t
-        return -rv
+#         Any parameter can be NAN, so we have to take it into account.
 
+#         If xy_shifts has not been measured, a None will be received.
 
-class ScaledReactor:
-    """Proportional/partial response for large/small distances."""
-
-    _multiplier = 1.0
-
-    def __init__(self, xylimit: float = 3., zlimit: float = 5.,
-                 multiplier: float = 1.):
-        self._multiplier = multiplier
-        self._factor = 1. / _np.array((xylimit, xylimit, zlimit), dtype=_np.float64)
-        self._buffer = _np.ones((2, 3,), dtype=_np.float64)
-
-    def reset_xy(self, n_xy_rois: int):
-        """Initialize all neccesary internal structures.
-
-        Not needed.
-        """
-        pass
-
-    def reset_z(self):
-        """Initialize all neccesary internal structures.
-
-        Not needed.
-        """
-        pass
-
-    def response(self, t: float, xy_shifts: _Optional[_np.ndarray], z_shift: float):
-        """Process a mesaurement of the displacements.
-
-        Any parameter can be NAN, so we have to take it into account.
-
-        If xy_shifts has not been measured, a None will be received.
-
-        Must return a 3-item tuple representing the response in x, y and z
-        """
-        if xy_shifts is None:
-            x_shift = y_shift = 0.0
-        else:
-            x_shift, y_shift = _np.nanmean(xy_shifts, axis=0)
-        if x_shift is _np.nan:
-            _lgr.warning("x shift is NAN")
-            x_shift = 0.0
-        if y_shift is _np.nan:
-            _lgr.warning("y shift is NAN")
-            y_shift = 0.0
-        # TODO: do not create an array each time
-        rv = _np.array((x_shift, y_shift, -z_shift,))
-        self._buffer[0, :] = _np.abs(rv)
-        self._buffer[0] *= self._factor
-        factor = self._buffer.min(axis=0)
-        return -self._multiplier * factor * rv
+#         Must return a 3-item tuple representing the response in x, y and z
+#         """
+#         if xy_shifts is None:
+#             x_shift = y_shift = 0.0
+#         else:
+#             x_shift, y_shift = _np.nanmean(xy_shifts, axis=0)
+#         if x_shift is _np.nan:
+#             _lgr.warning("x shift is NAN")
+#             x_shift = 0.0
+#         if y_shift is _np.nan:
+#             _lgr.warning("y shift is NAN")
+#             y_shift = 0.0
+#         # TODO: do not create an array each time
+#         rv = _np.array((x_shift, y_shift, -z_shift,))
+#         self._buffer[0, :] = _np.abs(rv)
+#         self._buffer[0] *= self._factor
+#         factor = self._buffer.min(axis=0)
+#         return -self._multiplier * factor * rv

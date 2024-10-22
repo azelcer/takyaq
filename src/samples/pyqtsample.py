@@ -21,7 +21,7 @@ import logging as _lgn
 from takyaq.frontends.PyQt_frontend import Frontend
 from PyQt5.QtWidgets import QApplication
 
-from takyaq.controllers import PIReactor
+from takyaq.controllers import PIController
 from takyaq.mocks import MockCamera, MockPiezo
 from takyaq.info_types import CameraInfo
 
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     camera_info = CameraInfo(
         _CAMERA_XY_NMPPX,
         _CAMERA_Z_NMPPX,
-        _CAMERA_Z_ROTATION,
+        _CAMERA_Z_ROTATION*3,
     )
     # Mock camera, replace with a real one
     camera = MockCamera(
@@ -54,7 +54,7 @@ if __name__ == "__main__":
     )
     # Mock piezo motor, replace with your own
     piezo = MockPiezo(camera)
-    controller = PIReactor(1, 0.3)
+    controller = PIController(1, 0.3)
 
     if not QApplication.instance():
         app = QApplication([])
