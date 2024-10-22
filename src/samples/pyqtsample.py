@@ -21,7 +21,7 @@ import logging as _lgn
 from takyaq.frontends.PyQt_frontend import Frontend
 from PyQt5.QtWidgets import QApplication
 
-from takyaq.responders import PIReactor
+from takyaq.controllers import PIReactor
 from takyaq.mocks import MockCamera, MockPiezo
 from takyaq.info_types import CameraInfo
 
@@ -54,13 +54,13 @@ if __name__ == "__main__":
     )
     # Mock piezo motor, replace with your own
     piezo = MockPiezo(camera)
-    responder = PIReactor(1, 0.3)
+    controller = PIReactor(1, 0.3)
 
     if not QApplication.instance():
         app = QApplication([])
     else:
         app = QApplication.instance()
-    gui = Frontend(camera, piezo, responder, camera_info)
+    gui = Frontend(camera, piezo, controller, camera_info)
 
     gui.setWindowTitle("Takyaq with PyQt frontend")
     gui.show()
