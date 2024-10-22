@@ -155,7 +155,7 @@ class Frontend(QFrame):
 
         Also resets base timer
         """
-        self._I_data = _np.full((_MAX_POINTS,), _np.nan)
+        # self._I_data = _np.full((_MAX_POINTS,), _np.nan)
         self._t_data = _np.full((_MAX_POINTS,), _np.nan)
         self._graph_pos = 0
         self._save_pos = 0
@@ -348,7 +348,7 @@ class Frontend(QFrame):
             self._save_pos = 0
         if self._graph_pos >= _MAX_POINTS:  # roll
             self._t_data[0:-1] = self._t_data[1:]
-            self._I_data[0:-1] = self._I_data[1:]
+            # self._I_data[0:-1] = self._I_data[1:]
             if self._z_tracking_enabled:
                 self._z_data[0:-1] = self._z_data[1:]
             if self._xy_tracking_enabled and xy_shifts.shape[0]:
@@ -359,10 +359,10 @@ class Frontend(QFrame):
         # manage image data
         self.img.setImage(img, autoLevels=self.lastimage is None)
         self.lastimage = img
-        self._I_data[self._graph_pos] = _np.average(img)
+        # self._I_data[self._graph_pos] = _np.average(img)
         self._t_data[self._graph_pos] = t
         t_data = self._t_data[: self._graph_pos + 1] - self._t0
-        self.avgIntCurve.setData(t_data, self._I_data[: self._graph_pos + 1])
+        # self.avgIntCurve.setData(t_data, self._I_data[: self._graph_pos + 1])
 
         # manage tracking data
         if self._z_tracking_enabled:
@@ -577,12 +577,12 @@ class Frontend(QFrame):
         self.xyzGraph.zPlot.showGrid(x=True, y=True)
         self.zCurve = self.xyzGraph.zPlot.plot(pen="y")
 
-        self.xyzGraph.avgIntPlot = self.xyzGraph.addPlot(row=3, col=0)
-        self.xyzGraph.avgIntPlot.setLabels(
-            bottom=("Time", "s"), left=("Av. intensity", "Counts")
-        )
-        self.xyzGraph.avgIntPlot.showGrid(x=True, y=True)
-        self.avgIntCurve = self.xyzGraph.avgIntPlot.plot(pen="g")
+        # self.xyzGraph.avgIntPlot = self.xyzGraph.addPlot(row=3, col=0)
+        # self.xyzGraph.avgIntPlot.setLabels(
+        #     bottom=("Time", "s"), left=("Av. intensity", "Counts")
+        # )
+        # self.xyzGraph.avgIntPlot.showGrid(x=True, y=True)
+        # self.avgIntCurve = self.xyzGraph.avgIntPlot.plot(pen="g")
 
         # xy drift graph (2D point plot)
         self.xyPoint = _pg.GraphicsLayoutWidget()
