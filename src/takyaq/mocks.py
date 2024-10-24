@@ -10,7 +10,13 @@ Mocks
 """
 import numpy as _np
 import time as _time
+import logging as _lgn
 from .base_classes import BaseCamera, BasePiezo
+
+
+_lgn.basicConfig()
+_lgr = _lgn.getLogger(__name__)
+_lgr.setLevel(_lgn.DEBUG)
 
 
 def gaussian2D(grid, amplitude, x0, y0, sigma, offset):

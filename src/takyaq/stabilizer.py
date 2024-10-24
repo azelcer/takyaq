@@ -285,10 +285,8 @@ class Stabilizer(_th.Thread):
             _lgr.warning("Trying to enable xy tracking without ROIs")
             return False
 
-        self._initialize_last_params()
         self._xy_track_event.clear()
         self._xy_track_event.wait()
-        self._xy_tracking = True
         return True
 
     def disable_xy_tracking(self) -> bool:
@@ -479,14 +477,9 @@ class Stabilizer(_th.Thread):
         """Locate the center of the reflection used to infer Z position."""
         if self._z_roi is None:
             _lgr.error("Trying to locate z position without a ROI")
-            return _np.nan
+            return _np.full((2,), np.nan)
         roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
-        # ang is measured counterclockwise from the X axis. We rotate *clockwise*
-        rv = (
-            _np.sum(_np.array(_sp.ndimage.center_of_mass(roi)) * self._rot_vec)
-            * self._nmpp_z
-        )
-        return rv
+        return _np.array(_sp.ndimage.center_of_mass(roi))
 
     def _move_relative(self, dx: float, dy: float, dz: float):
         """Perform a relative movement."""
@@ -683,6 +676,7 @@ class Stabilizer(_th.Thread):
                 continue
             if not self._xy_track_event.is_set():
                 _lgr.info("Setting xy initial positions")
+                self._initialize_last_params()
                 initial_xy_positions = self._locate_xy_centers(image)
                 self._xy_track_event.set()
                 self._xy_tracking = True
@@ -693,7 +687,9 @@ class Stabilizer(_th.Thread):
                 self._z_tracking = True
             if self._z_tracking:
                 z_position = self._locate_z_center(image)
-                z_shift = initial_z_position - z_position
+                z_disp = z_position - initial_z_position
+                # ang is measured counterclockwise from the X axis. We rotate *clockwise*
+                z_shift = (_np.sum(z_disp * self._rot_vec) * self._nmpp_z)
             if self._xy_tracking:
                 xy_positions = self._locate_xy_centers(image)
                 xy_shifts = xy_positions - initial_xy_positions
@@ -716,7 +712,5 @@ class Stabilizer(_th.Thread):
                 self._move_relative(x_resp, y_resp, z_resp)
             nt = _time.monotonic()
             delay = DELAY - (nt - lt)
-            if delay < 0.001:  # be nice to other threads
-                delay = 0.001
-            _time.sleep(delay)
+            _time.sleep(max(delay, 0.001))  # be nice to other threads
         _lgr.debug("Ending loop.")

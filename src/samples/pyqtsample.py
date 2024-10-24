@@ -40,7 +40,7 @@ if __name__ == "__main__":
     camera_info = CameraInfo(
         _CAMERA_XY_NMPPX,
         _CAMERA_Z_NMPPX,
-        _CAMERA_Z_ROTATION*3,
+        _CAMERA_Z_ROTATION,
     )
     # Mock camera, replace with a real one
     camera = MockCamera(
