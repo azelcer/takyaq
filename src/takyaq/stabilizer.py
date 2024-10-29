@@ -473,11 +473,11 @@ class Stabilizer(_th.Thread):
             "s": _np.array(sigmas, dtype=float),
         }
 
-    def _locate_z_center(self, image: _np.ndarray) -> float:
+    def _locate_z_center(self, image: _np.ndarray) -> _np.ndarray:
         """Locate the center of the reflection used to infer Z position."""
         if self._z_roi is None:
             _lgr.error("Trying to locate z position without a ROI")
-            return _np.full((2,), np.nan)
+            return _np.full((2,), _np.nan)
         roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
         return _np.array(_sp.ndimage.center_of_mass(roi))
 
