@@ -447,7 +447,7 @@ class Stabilizer(_th.Thread):
         self._last_params["y"][nanloc] = y[nanloc]
         self._last_params["s"] = locs[:, 2]
         self._last_params["s"][nanloc] = s[nanloc]
-        rv = locs[:, :2] + self._xy_rois[:, 0, :]
+        rv = locs[:, :2] + self._xy_rois[:, :, 0]
         rv *= self._nmpp_xy
         return rv
 
