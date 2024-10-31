@@ -18,6 +18,8 @@ Use:
 """
 import numpy as _np
 import time as _time
+from typing import Optional as _Optional
+from configparser import ConfigParser as _ConfigParser
 import warnings
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject, Qt
 from PyQt5.QtWidgets import (
@@ -43,6 +45,21 @@ import takyaq.base_classes as _bc
 
 _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
+
+# default configuration filename
+_CONFIG_FILENAME = 'takyaq.ini'
+
+_DEFAULT_CONFIG = {
+        'display_points': 200,
+        'save_buffer': 200,
+        'period': 0.200,
+        'XY ROIS': {
+            'size': 200,
+        },
+        'Z ROI': {
+            'size': 60,
+        }
+    }
 
 
 class GroupedCheckBoxes:
@@ -95,6 +112,61 @@ class QReader(QObject):
         self.new_data.emit(data.time, data.image, data.z_shift, data.xy_shifts)
 
 
+def save_config(config_data: dict, filename: str = _CONFIG_FILENAME):
+    """Save data to file.
+
+    TODO: remove default params
+    """
+    config = _ConfigParser()
+    config["General"] = {
+        'display_points': config_data.get('display_points', 200),
+        'save_buffer': config_data.get('display_points', 200),
+        'period': config_data.get('period', 0.100),
+    }
+    XY_dict = config_data.get('XY ROIS', {})
+    config['XY ROIS'] = {
+        'size': XY_dict.get('size', 200),
+        }
+    # TODO: guardar posicion ROI Z
+    Z_dict = config_data.get('Z ROI', {})
+    config['Z ROI'] = {
+        'size': Z_dict.get('size', 60),
+        }
+    with open(filename, "wt") as configfile:
+        config.write(configfile)
+
+
+def load_config(filename: str = _CONFIG_FILENAME):
+    """Load config.
+
+    Raises not found
+    """
+    config = _ConfigParser()
+    rv = dict(_DEFAULT_CONFIG)
+    if not config.read(filename):
+        print("No config file: using defaults")
+        return rv
+    if 'General' in config:
+        gnrl = config['General']
+        for k in ('display_points', 'save_buffer'):
+            rv[k] = gnrl.getint(k)
+        for k in ('period'):
+            rv[k] = gnrl.getfloat(k)
+    return rv
+
+
+def load_camera_info(filename: str = _CONFIG_FILENAME) -> CameraInfo:
+    """Return camera info from config file."""
+    config = _ConfigParser()
+    if not config.read(filename):
+        raise FileNotFoundError("Camera info configuration file not found.")
+    if 'Camera' not in config:
+        raise KeyError("Camera info not found in configuration file.")
+    nm_ppx_xy = config.getfloat('Camera', 'nm_ppx_xy')
+    nm_ppx_z = config.getfloat('Camera', 'nm_ppx_z')
+    angle = config.getfloat('Camera', 'angle')
+    return CameraInfo(nm_ppx_xy, nm_ppx_z, angle)
+
 # Globals (should go into a configuration file)
 _MAX_POINTS = 200
 _SAVE_PERIOD = 200  # for now, must be <= _MAX_POINTS
@@ -113,6 +185,7 @@ class Frontend(QFrame):
     _x_data = _np.full((_MAX_POINTS, 0), _np.nan)
     _graph_pos = 0  # for graphics and statistics
     _save_pos = 0
+    _period = _SAVE_PERIOD
 
     _x_plots = []
     _y_plots = []
@@ -127,14 +200,14 @@ class Frontend(QFrame):
     _camera_info: CameraInfo
 
     def __init__(self, camera: _bc.BaseCamera, piezo: _bc.BasePiezo,
-                 responder: _bc.BaseResponder, camera_info: CameraInfo,
+                 responder: _bc.BaseResponder, camera_info: _Optional[CameraInfo],
                  *args, **kwargs):
         """Init Frontend."""
         super().__init__(*args, **kwargs)
-
+        self._load_config()
         self._camera = camera
         self._piezo = piezo
-        self._camera_info = camera_info
+        self._camera_info = camera_info if camera_info else load_camera_info()
         self.setup_gui()
         # Callback object
         self._cbojt = QReader()
@@ -143,32 +216,37 @@ class Frontend(QFrame):
         self.reset_xy_data_buffers(len(self._roilist))
         self.reset_z_data_buffers()
         self._est = Stabilizer(
-            self._camera, self._piezo, camera_info, responder, self._cbojt.cb
+            self._camera, self._piezo, self._camera_info, responder, self._cbojt.cb
         )
         self._est.set_min_period(0.15)
         self._t0 = _time.time()
         self._est.start_loop()
         self._set_delay(True)
 
+    def _load_config(self):
+        self._config = load_config()
+        self._MAX_POINTS = self._config['display_points']
+        self._period = self._config['period']
+        
     def reset_data_buffers(self):
         """Reset data buffers unrelated to localization.
 
         Also resets base timer
         """
-        # self._I_data = _np.full((_MAX_POINTS,), _np.nan)
-        self._t_data = _np.full((_MAX_POINTS,), _np.nan)
+        # self._I_data = _np.full((self._MAX_POINTS,), _np.nan)
+        self._t_data = _np.full((self._MAX_POINTS,), _np.nan)
         self._graph_pos = 0
         self._save_pos = 0
         self._t0 = _time.time()
 
     def reset_xy_data_buffers(self, roi_len: int):
         """Reset data buffers related to XY localization."""
-        self._x_data = _np.full((_MAX_POINTS, roi_len), _np.nan)  # sample #, roi
-        self._y_data = _np.full((_MAX_POINTS, roi_len), _np.nan)  # sample #, roi
+        self._x_data = _np.full((self._MAX_POINTS, roi_len), _np.nan)  # sample #, roi
+        self._y_data = _np.full((self._MAX_POINTS, roi_len), _np.nan)  # sample #, roi
 
     def reset_z_data_buffers(self):
         """Reset data buffers related to Z localization."""
-        self._z_data = _np.full((_MAX_POINTS,), _np.nan)
+        self._z_data = _np.full((self._MAX_POINTS,), _np.nan)
 
     def reset_graphs(self, roi_len: int):
         """Reset graphs contents and adjust to number of XY ROIs."""
@@ -325,6 +403,8 @@ class Frontend(QFrame):
     @pyqtSlot(bool)
     def _set_delay(self, checked: bool):
         delay = float(self.delay_le.text())
+        self._period = delay
+        self._config['period'] = delay
         self._est.set_min_period(delay)
 
     @pyqtSlot(bool)
@@ -346,7 +426,7 @@ class Frontend(QFrame):
         if self._save_pos >= _SAVE_PERIOD:  # y grabar activado
             _lgr.info("GRABAR")
             self._save_pos = 0
-        if self._graph_pos >= _MAX_POINTS:  # roll
+        if self._graph_pos >= self._MAX_POINTS:  # roll
             self._t_data[0:-1] = self._t_data[1:]
             # self._I_data[0:-1] = self._I_data[1:]
             if self._z_tracking_enabled:
@@ -513,7 +593,7 @@ class Frontend(QFrame):
         self.calibrateZButton = QPushButton('Calibrate Z')
         self.calibrateZButton.clicked.connect(self._calibrate_z)
         delay_layout = QHBoxLayout()
-        self.delay_le = QLineEdit(str(0.100))
+        self.delay_le = QLineEdit(str(self._period))
         self.delay_le.setValidator(QDoubleValidator(1E-3, 1., 3))
         self.set_delay_button = QPushButton('Set Delay')
         self.set_delay_button.clicked.connect(self._set_delay)
