@@ -348,7 +348,7 @@ class Frontend(QFrame):
             self._z_tracking_enabled = True
 
     @pyqtSlot(int)
-    def _start_z_lock(self, state: int):
+    def _change_z_lock(self, state: int):
         """Start stabilization of Z position."""
         if state == Qt.CheckState.Unchecked:
             self._est.set_z_stabilization(False)
@@ -387,7 +387,7 @@ class Frontend(QFrame):
             self._xy_tracking_enabled = True
 
     @pyqtSlot(int)
-    def _start_xy_lock(self, state: int):
+    def _change_xy_lock(self, state: int):
         """Start stabilization of XY position."""
         if state == Qt.CheckState.Unchecked:
             self._est.set_xy_stabilization(False)
@@ -545,7 +545,7 @@ class Frontend(QFrame):
         self.delete_roiButton.setEnabled(False)
 
         # Tracking control
-        trackgb = QGroupBox("Tracking")
+        trackgb = QGroupBox("Track")
         trackLayout = QHBoxLayout()
         self.trackAllBox = QCheckBox("All")
         self.trackXYBox = QCheckBox("xy")
@@ -562,6 +562,7 @@ class Frontend(QFrame):
             self.trackXYBox,
             self.trackZBox,
         )
+        trackgb.setFlat(True)
         self.trackZBox.stateChanged.connect(self._send_z_rois)
         self.trackXYBox.stateChanged.connect(self._send_xy_rois)
 
@@ -581,17 +582,35 @@ class Frontend(QFrame):
             self.lockXYBox,
             self.lockZBox,
         )
-        self.lockZBox.stateChanged.connect(self._start_z_lock)
-        self.lockXYBox.stateChanged.connect(self._start_xy_lock)
+        lockgb.setFlat(True)
+        self.lockZBox.stateChanged.connect(self._change_z_lock)
+        self.lockXYBox.stateChanged.connect(self._change_xy_lock)
 
-        self.exportDataButton = QPushButton("Export data")
-        # self.clearDataButton = QPushButton('Clear data')
-        self.calibrateXButton = QPushButton('Calibrate X')
+        datagb = QGroupBox("Data")
+        data_layout = QHBoxLayout()
+        # data_btn_layout = QVBoxLayout()
+        datagb.setLayout(data_layout)
+        self.export_chkbx = QCheckBox("Save")
+        self.exportDataButton = QPushButton("Export")
+        self.clearDataButton = QPushButton("Clear")
+        data_layout.addWidget(self.export_chkbx)
+        data_layout.addWidget(self.exportDataButton)
+        data_layout.addWidget(self.clearDataButton)
+        datagb.setFlat(True)
+        
+        calibration_gb = QGroupBox("Calibration")
+        calibration_layout = QHBoxLayout()
+        calibration_gb.setLayout(calibration_layout)
+        self.calibrateXButton = QPushButton('X')
         self.calibrateXButton.clicked.connect(self._calibrate_x)
-        self.calibrateYButton = QPushButton('Calibrate Y')
+        self.calibrateYButton = QPushButton('Y')
         self.calibrateYButton.clicked.connect(self._calibrate_y)
-        self.calibrateZButton = QPushButton('Calibrate Z')
+        self.calibrateZButton = QPushButton('Z')
         self.calibrateZButton.clicked.connect(self._calibrate_z)
+        calibration_layout.addWidget(self.calibrateXButton)
+        calibration_layout.addWidget(self.calibrateYButton)
+        calibration_layout.addWidget(self.calibrateZButton)
+        
         delay_layout = QHBoxLayout()
         self.delay_le = QLineEdit(str(self._period))
         self.delay_le.setValidator(QDoubleValidator(1E-3, 1., 3))
@@ -610,13 +629,11 @@ class Frontend(QFrame):
 
         param_layout.addWidget(trackgb)
         param_layout.addWidget(lockgb)
+        param_layout.addWidget(datagb)
 
         param_layout.addStretch()
-        param_layout.addWidget(self.exportDataButton)
 
-        param_layout.addWidget(self.calibrateXButton)
-        param_layout.addWidget(self.calibrateYButton)
-        param_layout.addWidget(self.calibrateZButton)
+        param_layout.addWidget(calibration_gb)
         param_layout.addLayout(delay_layout)
 
         # stats widget
