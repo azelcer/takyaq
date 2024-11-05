@@ -133,7 +133,7 @@ class Stabilizer(_th.Thread):
         camera: _bc.BaseCamera,
         piezo: _bc.BasePiezo,
         camera_info: CameraInfo,
-        corrector: _bc.BaseResponder,
+        corrector: _bc.BaseController,
         callback: _Callable[[PointInfo], None] = None,
         *args,
         **kwargs,
@@ -554,7 +554,7 @@ class Stabilizer(_th.Thread):
                 x = _np.nanmean(xy_shifts[:, c_idx])
                 response[idx] = x / self._nmpp_xy
                 self._move_relative(*rel_vec)
-                _time.sleep(0.050)
+                _time.sleep(0.10)
             # TODO: better reporting
             for x, y in zip(shifts, response):
                 print(f"{x}, {y}")
@@ -617,7 +617,7 @@ class Stabilizer(_th.Thread):
                 self._report(_time.time(), image, xy_data, _np.nan)
                 response[idx] = c
                 self._move_relative(*rel_vec)
-                _time.sleep(0.050)
+                _time.sleep(0.10)
             # TODO: better reporting
             for x, y in zip(shifts, response):
                 print(f"{x}, {y}")
@@ -645,14 +645,15 @@ class Stabilizer(_th.Thread):
             xy_shifts = None
             if self._calibrate_event.is_set():
                 _lgr.debug("Calibration event received")
+                self._pos[:] = self._piezo.get_position()
                 if self._calib_idx >= 0 and self._calib_idx < 2:
                     if self._xy_tracking:
-                        self._calibrate_xy(50.0, initial_xy_positions)
+                        self._calibrate_xy(100.0, initial_xy_positions)
                     else:
                         _lgr.warning("can not calibrate XY without tracking")
                 elif self._calib_idx == 2:
                     if self._z_tracking:
-                        self._calibrate_z(50.0, initial_xy_positions)
+                        self._calibrate_z(100.0, initial_xy_positions)
                     else:
                         _lgr.warning("can not calibrate Z without tracking")
                 else:
@@ -676,11 +677,13 @@ class Stabilizer(_th.Thread):
                 continue
             if not self._xy_track_event.is_set():
                 _lgr.info("Setting xy initial positions")
+                self._pos[:] = self._piezo.get_position()
                 self._initialize_last_params()
                 initial_xy_positions = self._locate_xy_centers(image)
                 self._xy_track_event.set()
                 self._xy_tracking = True
             if not self._z_roi_OK_event.is_set():
+                self._pos[:] = self._piezo.get_position()
                 _lgr.info("Setting z initial positions")
                 initial_z_position = self._locate_z_center(image)
                 self._z_roi_OK_event.set()

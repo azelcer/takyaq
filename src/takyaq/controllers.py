@@ -82,7 +82,13 @@ class PIController:
             Ki: float or collection[3]
                 Intergral term constant. Single value or one for x, y, and z
         """
+        self.set_Kp(Kp)
+        self.set_Ki(Ki)
+
+    def set_Kp(self, Kp: _Union[float, _Collection[float]]):
         self._Kp[:] = _np.array(Kp)
+
+    def set_Ki(self, Ki: _Union[float, _Collection[float]]):
         self._Ki[:] = _np.array(Ki)
 
     def reset_xy(self, n_xy_rois: int):

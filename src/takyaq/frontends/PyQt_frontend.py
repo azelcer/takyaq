@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+     # -*- coding: utf-8 -*-
 """
 Sample PyQT frontend for Takyaq.
 
@@ -18,7 +18,7 @@ Use:
 """
 import numpy as _np
 import time as _time
-from typing import Optional as _Optional
+from typing import Optional as _Optional, BinaryIO as _BinaryIO
 from configparser import ConfigParser as _ConfigParser
 import warnings
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject, Qt
@@ -33,6 +33,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QVBoxLayout,
     QLineEdit,
+    QDoubleSpinBox,
 )
 from PyQt5.QtGui import QDoubleValidator
 import pyqtgraph as _pg
@@ -51,7 +52,7 @@ _CONFIG_FILENAME = 'takyaq.ini'
 
 _DEFAULT_CONFIG = {
         'display_points': 200,
-        'save_buffer': 200,
+        'save_buffer': 100,
         'period': 0.200,
         'XY ROIS': {
             'size': 200,
@@ -169,7 +170,7 @@ def load_camera_info(filename: str = _CONFIG_FILENAME) -> CameraInfo:
 
 # Globals (should go into a configuration file)
 _MAX_POINTS = 200
-_SAVE_PERIOD = 200  # for now, must be <= _MAX_POINTS
+_SAVE_PERIOD = 100  # for now, must be <= _MAX_POINTS
 _XY_ROI_SIZE = 60
 _Z_ROI_SIZE = 100
 
@@ -179,13 +180,17 @@ class Frontend(QFrame):
 
     Implemented as a QFrame so it can be easily integrated within a larger app.
     """
-
+    # For displaying
     _t_data = _np.full((_MAX_POINTS,), _np.nan)
     _z_data = _np.full((_MAX_POINTS,), _np.nan)
     _x_data = _np.full((_MAX_POINTS, 0), _np.nan)
-    _graph_pos = 0  # for graphics and statistics
+    _graph_pos = 0
+
+    # For saving
     _save_pos = 0
+    _save_data: bool = False
     _period = _SAVE_PERIOD
+    _xy_fd: _BinaryIO = None
 
     _x_plots = []
     _y_plots = []
@@ -200,13 +205,14 @@ class Frontend(QFrame):
     _camera_info: CameraInfo
 
     def __init__(self, camera: _bc.BaseCamera, piezo: _bc.BasePiezo,
-                 responder: _bc.BaseResponder, camera_info: _Optional[CameraInfo],
+                 controller: _bc.BaseController, camera_info: _Optional[CameraInfo],
                  *args, **kwargs):
         """Init Frontend."""
         super().__init__(*args, **kwargs)
         self._load_config()
         self._camera = camera
         self._piezo = piezo
+        self._controller = controller
         self._camera_info = camera_info if camera_info else load_camera_info()
         self.setup_gui()
         # Callback object
@@ -216,7 +222,7 @@ class Frontend(QFrame):
         self.reset_xy_data_buffers(len(self._roilist))
         self.reset_z_data_buffers()
         self._est = Stabilizer(
-            self._camera, self._piezo, self._camera_info, responder, self._cbojt.cb
+            self._camera, self._piezo, self._camera_info, controller, self._cbojt.cb
         )
         self._est.set_min_period(0.15)
         self._t0 = _time.time()
@@ -243,6 +249,7 @@ class Frontend(QFrame):
         """Reset data buffers related to XY localization."""
         self._x_data = _np.full((self._MAX_POINTS, roi_len), _np.nan)  # sample #, roi
         self._y_data = _np.full((self._MAX_POINTS, roi_len), _np.nan)  # sample #, roi
+        self._xy_data = _np.full((self._MAX_POINTS, roi_len, 2), _np.nan)  # sample #, roi
 
     def reset_z_data_buffers(self):
         """Reset data buffers related to Z localization."""
@@ -419,13 +426,46 @@ class Frontend(QFrame):
     def _calibrate_z(self, clicked: bool):
         self._est.calibrate('z')
 
+    @pyqtSlot(int)
+    def _change_save(self, check_status: int):
+        if check_status == Qt.CheckState.Unchecked:
+            self._save_data = False
+            ...
+            # Grabar pucho que queda
+            self._xy_fd.close()
+            self._xy_fd = None
+        else:
+            self._save_data = True
+            self._save_pos = 0
+            try:
+                self._xy_fd = open("/tmp/xy_data.npy", 'wb')  # TODO: change filename
+            except Exception as e:
+                _lgr.error("Can not open output file: %s (%s)", type(e), e)
+                self.export_chkbx.setChecked(False)
+
+    def _save_and_reset(self):
+        _lgr.info("GRABAR")
+        
+# ValueError: setting an array element with a sequence. The requested array has an inhomogeneous shape after 2 dimensions. The detected shape was (3, 100) + inhomogeneous part.
+        _np.save(self._xy_fd, _np.array((self._t_data[:self._save_pos],
+                                        self._x_data[:self._save_pos],
+                                        self._y_data[:self._save_pos])
+                                       ))
+        self._save_pos = 0
+
+    @pyqtSlot(float)
+    def _PI_changed(self, newvalue: float):
+        Kp = [sp.value() for sp in self._KP_sp]
+        Ki = [sp.value() for sp in self._KI_sp]
+        self._controller.set_Kp(Kp)
+        self._controller.set_Ki(Ki)
+
     @pyqtSlot(float, _np.ndarray, float, _np.ndarray)
     def get_data(self, t: float, img: _np.ndarray, z: float, xy_shifts: _np.ndarray):
         """Receive data from the stabilizer and graph it."""
         # Ver si grabar
-        if self._save_pos >= _SAVE_PERIOD:  # y grabar activado
-            _lgr.info("GRABAR")
-            self._save_pos = 0
+        if self._save_pos >= _SAVE_PERIOD and self._save_data:
+            self._save_and_reset()
         if self._graph_pos >= self._MAX_POINTS:  # roll
             self._t_data[0:-1] = self._t_data[1:]
             # self._I_data[0:-1] = self._I_data[1:]
@@ -434,6 +474,7 @@ class Frontend(QFrame):
             if self._xy_tracking_enabled and xy_shifts.shape[0]:
                 self._x_data[0:-1] = self._x_data[1:]
                 self._y_data[0:-1] = self._y_data[1:]
+                # self._xy_data[0:-1] = self._xy_data[1:]
             self._graph_pos -= 1
 
         # manage image data
@@ -455,22 +496,26 @@ class Frontend(QFrame):
             z_data = self._z_data[: self._graph_pos + 1]
             self.zCurve.setData(t_data, z_data)
             try:  # It is possible to have all NANs data
-                hist, bin_edges = _np.histogram(z_data, bins=30)
+                hist, bin_edges = _np.histogram(z_data, bins=30,
+                                                range=(_np.nanmin(z_data),
+                                                       _np.nanmax(z_data)))
                 self.zHistogram.setOpts(
                     x=_np.mean((bin_edges[:-1], bin_edges[1:],), axis=0),
                     height=hist,
                     width=bin_edges[1]-bin_edges[0]
                     )
-            except Exception:
-                ...
+            except Exception as e:
+                print("Excepcion ploteando z:", e, (type(e)))
 
         if self._xy_tracking_enabled and xy_shifts.shape[0]:
             self._x_data[self._graph_pos] = xy_shifts[:, 0]
             self._y_data[self._graph_pos] = xy_shifts[:, 1]
-            # t_data = _np.copy(t_data)
+            # self._xy_data[self._graph_pos] = xy_shifts
+            t_data = _np.copy(t_data)
 
             x_data = self._x_data[: self._graph_pos + 1]
             y_data = self._y_data[: self._graph_pos + 1]
+            # x_data, y_data = self._xy_data[: self._graph_pos + 1]
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 x_mean = _np.nanmean(x_data, axis=1)
@@ -586,17 +631,48 @@ class Frontend(QFrame):
         self.lockZBox.stateChanged.connect(self._change_z_lock)
         self.lockXYBox.stateChanged.connect(self._change_xy_lock)
 
+        # Data saving
         datagb = QGroupBox("Data")
         data_layout = QHBoxLayout()
         # data_btn_layout = QVBoxLayout()
         datagb.setLayout(data_layout)
         self.export_chkbx = QCheckBox("Save")
-        self.exportDataButton = QPushButton("Export")
+        self.export_chkbx.stateChanged.connect(self._change_save)
+        self.exportDataButton = QPushButton("Export - Go to center")
         self.clearDataButton = QPushButton("Clear")
         data_layout.addWidget(self.export_chkbx)
         data_layout.addWidget(self.exportDataButton)
         data_layout.addWidget(self.clearDataButton)
         datagb.setFlat(True)
+        
+        PI_gb = QGroupBox("PI")
+        PI_layout = QGridLayout()
+        PI_gb.setLayout(PI_layout)
+        self._KP_sp: list[QDoubleSpinBox] = []
+        self._KI_sp: list[QDoubleSpinBox] = []
+        PI_layout.addWidget(QLabel('Kp'), 1, 0)
+        PI_layout.addWidget(QLabel('Ki'), 2, 0)
+        for idx, coord in enumerate(['x', 'y', 'z']):
+            PI_layout.addWidget(QLabel(coord), 0, 1+idx)
+            kpsp = QDoubleSpinBox()
+            kpsp.setValue(.75)
+            kpsp.setDecimals(2)
+            kpsp.setMinimum(0.)
+            kpsp.setMaximum(1.)
+            kpsp.setSingleStep(0.01)
+            kpsp.valueChanged.connect(self._PI_changed)
+            self._KP_sp.append(kpsp)
+            kisp = QDoubleSpinBox()
+            kisp.setDecimals(2)
+            kisp.setMinimum(0.)
+            kisp.setMaximum(1.)
+            kisp.setSingleStep(0.01)
+            kisp.setValue(.5)
+            kisp.valueChanged.connect(self._PI_changed)
+            self._KI_sp.append(kisp)
+            PI_layout.addWidget(kpsp, 1, 1+idx)
+            PI_layout.addWidget(kisp, 2, 1+idx)
+        PI_gb.setFlat(True)
         
         calibration_gb = QGroupBox("Calibration")
         calibration_layout = QHBoxLayout()
@@ -629,6 +705,7 @@ class Frontend(QFrame):
 
         param_layout.addWidget(trackgb)
         param_layout.addWidget(lockgb)
+        param_layout.addWidget(PI_gb)
         param_layout.addWidget(datagb)
 
         param_layout.addStretch()
@@ -711,10 +788,15 @@ class Frontend(QFrame):
         grid.addWidget(self.xyzGraph, 1, 0)
         grid.addWidget(self.xyPoint, 1, 1, 1, 2)  # agrego 1,2 al final
 
+    def goto_center(self, *args):
+        self._piezo.set_position(1E4, 1E4, 1E4)
+        
     def closeEvent(self, *args, **kwargs):
         """Shut down stabilizer on exit."""
         super().closeEvent(*args, **kwargs)
         self._est.stop_loop()
+        if self._save_data:
+            self._change_save(Qt.CheckState.Unchecked)
 
 
 if __name__ == "__main__":

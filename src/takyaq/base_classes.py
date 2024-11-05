@@ -43,8 +43,8 @@ class BasePiezo(_ABC):
     #     ...
 
 
-class BaseResponder(_ABC):
-    """Base class for responders."""
+class BaseController(_ABC):
+    """Base class for controllers."""
 
     @_abstractclassmethod
     def reset_xy(self, n_xy_rois: int):
