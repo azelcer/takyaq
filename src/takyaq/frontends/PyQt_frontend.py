@@ -527,7 +527,7 @@ class Frontend(QFrame):
             self._x_data[self._graph_pos] = xy_shifts[:, 0]
             self._y_data[self._graph_pos] = xy_shifts[:, 1]
             # self._xy_data[self._graph_pos] = xy_shifts
-            t_data = _np.copy(t_data)
+            t_data = _np.copy(t_data)  # pyqtgraph does not keep a cpoy
 
             x_data = self._x_data[: self._graph_pos + 1]
             y_data = self._y_data[: self._graph_pos + 1]
@@ -538,10 +538,10 @@ class Frontend(QFrame):
                 y_mean = _np.nanmean(y_data, axis=1)
                 # update reports
                 self.xstd_value.setText(
-                    f"{_np.nanstd(self._x_data[:self._graph_pos + 1]):.2f}"
+                    f"{_np.nanstd(x_mean):.2f}"
                 )
                 self.ystd_value.setText(
-                    f"{_np.nanstd(self._y_data[:self._graph_pos + 1]):.2f}"
+                    f"{_np.nanstd(y_mean):.2f}"
                 )
             # update Graphs
             for i, p in enumerate(self._x_plots):
