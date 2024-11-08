@@ -113,6 +113,18 @@ class QReader(QObject):
         self.new_data.emit(data.time, data.image, data.z_shift, data.xy_shifts)
 
 
+def _create_spin(value: float, decimals: int, step: float,
+                 minimum: float = 0., maximum: float = 1.):
+    """Create spin with properties."""
+    rv = QDoubleSpinBox()
+    rv.setValue(value)
+    rv.setDecimals(decimals)
+    rv.setMinimum(minimum)
+    rv.setMaximum(maximum)
+    rv.setSingleStep(step)
+    return rv
+
+
 def save_config(config_data: dict, filename: str = _CONFIG_FILENAME):
     """Save data to file.
 
@@ -215,6 +227,7 @@ class Frontend(QFrame):
         self._controller = controller
         self._camera_info = camera_info if camera_info else load_camera_info()
         self.setup_gui()
+        self._PID_changed(0.0)
         # Callback object
         self._cbojt = QReader()
         self._cbojt.new_data.connect(self.get_data)
@@ -384,6 +397,7 @@ class Frontend(QFrame):
                 self.trackXYBox.setCheckState(Qt.CheckState.Unchecked)
                 return
             if self._xy_tracking_enabled:
+                _lgr.warning("XY tracking was already enabled")
                 return
             self.reset_graphs(len(self._roilist))
             self.reset_xy_data_buffers(len(self._roilist))
@@ -454,11 +468,13 @@ class Frontend(QFrame):
         self._save_pos = 0
 
     @pyqtSlot(float)
-    def _PI_changed(self, newvalue: float):
+    def _PID_changed(self, newvalue: float):
         Kp = [sp.value() for sp in self._KP_sp]
         Ki = [sp.value() for sp in self._KI_sp]
+        Kd = [sp.value() for sp in self._KD_sp]
         self._controller.set_Kp(Kp)
         self._controller.set_Ki(Ki)
+        self._controller.set_Kd(Kd)
 
     @pyqtSlot(float, _np.ndarray, float, _np.ndarray)
     def get_data(self, t: float, img: _np.ndarray, z: float, xy_shifts: _np.ndarray):
@@ -650,28 +666,24 @@ class Frontend(QFrame):
         PI_gb.setLayout(PI_layout)
         self._KP_sp: list[QDoubleSpinBox] = []
         self._KI_sp: list[QDoubleSpinBox] = []
+        self._KD_sp: list[QDoubleSpinBox] = []
         PI_layout.addWidget(QLabel('Kp'), 1, 0)
         PI_layout.addWidget(QLabel('Ki'), 2, 0)
+        PI_layout.addWidget(QLabel('Kd'), 3, 0)
         for idx, coord in enumerate(['x', 'y', 'z']):
             PI_layout.addWidget(QLabel(coord), 0, 1+idx)
-            kpsp = QDoubleSpinBox()
-            kpsp.setValue(.75)
-            kpsp.setDecimals(2)
-            kpsp.setMinimum(0.)
-            kpsp.setMaximum(1.)
-            kpsp.setSingleStep(0.01)
-            kpsp.valueChanged.connect(self._PI_changed)
+            kpsp = _create_spin(.75, 3, 0.005)
+            kpsp.valueChanged.connect(self._PID_changed)
             self._KP_sp.append(kpsp)
-            kisp = QDoubleSpinBox()
-            kisp.setDecimals(2)
-            kisp.setMinimum(0.)
-            kisp.setMaximum(1.)
-            kisp.setSingleStep(0.01)
-            kisp.setValue(.5)
-            kisp.valueChanged.connect(self._PI_changed)
+            kisp = _create_spin(0, 3, 0.005)
+            kisp.valueChanged.connect(self._PID_changed)
             self._KI_sp.append(kisp)
+            kdsp = _create_spin(0, 3, 0.005)
+            kdsp.valueChanged.connect(self._PID_changed)
+            self._KD_sp.append(kdsp)
             PI_layout.addWidget(kpsp, 1, 1+idx)
             PI_layout.addWidget(kisp, 2, 1+idx)
+            PI_layout.addWidget(kdsp, 3, 1+idx)
         PI_gb.setFlat(True)
         
         calibration_gb = QGroupBox("Calibration")

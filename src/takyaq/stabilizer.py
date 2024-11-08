@@ -237,7 +237,7 @@ class Stabilizer(_th.Thread):
         Parameters
         ----------
         rois: list[info_types.ROI]
-            list of XY rois
+            list of XY rois (in pixels)
 
         Return
         ------
@@ -249,7 +249,7 @@ class Stabilizer(_th.Thread):
         self._xy_rois = _np.array(
             # TODO: protect against negative numbers max(0, _.min_x), min(_.max_x, self.img.shape[1])
             [[[_.min_x, _.max_x], [_.min_y, _.max_y]] for _ in rois],
-            dtype=_np.uint16,
+            dtype=_np.uint16,  # int type to use as indexes
         )
         return True
 

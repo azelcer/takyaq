@@ -142,27 +142,41 @@ class PIDController:
     _cum = _np.zeros((3,))
     next_val = 0
     _last_deriv = _np.full((1, 3,), _np.nan)
-    lasttime = 0.
+    _last_times = _np.zeros((3,))
+    _n_deriv_points = 10
 
     def __init__(self, Kp: _Union[float, _Collection[float]] = 1.,
                  Ki: _Union[float, _Collection[float]] = 1.,
                  Kd: _Union[float, _Collection[float]] = 1.,
                  deriv_points: int = 10):
-        self._Kp[:] = _np.array(Kp)
-        self._Ki[:] = _np.array(Ki)
-        self._Kd[:] = _np.array(Kd)
-        self._deriv_points = deriv_points
+        self.set_Kp(Kp)
+        self.set_Ki(Ki)
+        self.set_Kd(Kd)
+        self._n_deriv_points = deriv_points
         self._last_deriv = _np.full((deriv_points, 3,), _np.nan)
+
+    def set_Kp(self, Kp: _Union[float, _Collection[float]]):
+        self._Kp[:] = _np.array(Kp)
+
+    def set_Ki(self, Ki: _Union[float, _Collection[float]]):
+        self._Ki[:] = _np.array(Ki)
+
+    def set_Kd(self, Kd: _Union[float, _Collection[float]]):
+        self._Kd[:] = _np.array(Kd)
 
     def reset_xy(self, n_xy_rois: int):
         """Initialize all neccesary internal structures."""
         self._cum[0:2] = 0.
-        self._last_deriv[:, 0:2] = 0
+        self._last_deriv[:, 0:2] = _np.nan
+        self._last_times[0:2] = 0.
+        self._last_e[0:2] = 0.
 
     def reset_z(self):
         """Initialize all neccesary internal structures."""
         self._cum[2] = 0.
-        self._last_deriv[:, 2] = 0.
+        self._last_deriv[:, 2] = _np.nan
+        self._last_times[2] = 0.
+        self._last_e[2] = 0.
 
     def response(self, t: float, xy_shifts: _Optional[_np.ndarray], z_shift: float):
         """Process a mesaurement of the displacements.
@@ -184,23 +198,94 @@ class PIDController:
             _lgr.warning("y shift is NAN")
             y_shift = 0.0
 
-        if not self.lasttime:
-            self.lasttime = t
         error = _np.array((x_shift, y_shift, z_shift))
-        if not self.lasttime:
-            self.lasttime = t
-        delta_t = t - self.lasttime
-        if delta_t > 1.:  # protect against suspended processes
-            delta_t = 1.
+        self._last_times[_np.where(self._last_times <= 0.)] = t
+        delta_t = t - self._last_times
+        delta_t[_np.where(delta_t > 1)] = 1.  # protect against suspended processes
         self._cum += error * delta_t
+        # adapt delta-t to deriv
+        delta_t[_np.where(delta_t <= 0)] = _np.inf
         d = (error - self._last_e) / delta_t
+
         self._last_deriv[self.next_val] = d
-        self.next_val = (self.next_val + 1) % self._N_VALS
-        self._deriv = _np.nansum(self._last_deriv, axis=0) / self._N_VALS
+        self.next_val = (self.next_val + 1) % self._n_deriv_points
+        self._deriv = _np.nanmean(self._last_deriv, axis=0)
+        # print(self._deriv, self._Kd)
         rv = error * self._Kp + self._Ki * self._cum + self._Kd * self._deriv
         self._last_e = error
-        self.lasttime = t
-        return rv
+        self._last_times[:] = t
+        return -rv
+
+
+
+class OLDController:
+    """Copiado xyz lock."""
+
+    _Kp = _np.ones((3,))
+    _Ki = _np.ones((3,))
+    _last_error = _np.zeros((3,))
+
+    def __init__(self, Kp: _Union[float, _Collection[float]] = 1.,
+                 Ki: _Union[float, _Collection[float]] = 1.):
+        """Proportional controller.
+
+        Parameters
+        ==========
+            Kp: float or collection[3]
+                Proportional term constant. Single value or one for x, y, and z
+            Ki: float or collection[3]
+                Intergral term constant. Single value or one for x, y, and z
+        """
+        self._multiplier = 1
+        self.set_Kp(Kp)
+        self.set_Ki(Ki)
+        self._last_error = _np.zeros((3,))
+        self.out = _np.zeros((3,))
+
+    def set_Kp(self, Kp: _Union[float, _Collection[float]]):
+        self._Kp[:] = _np.array(Kp) * self._multiplier
+
+    def set_Ki(self, Ki: _Union[float, _Collection[float]]):
+        self._Ki[:] = _np.array(Ki) * self._multiplier
+
+    def set_Kd(self, Kd: _Union[float, _Collection[float]]):
+        _lgr.warning("Ojo: Kd no hace nada")
+
+    def reset_xy(self, n_xy_rois: int):
+        """Initialize all neccesary internal structures."""
+        self._last_error[0:2] = 0.
+        self.out[0:2] = 0.
+
+    def reset_z(self):
+        """Initialize all neccesary internal structures."""
+        self._last_error[2] = 0.
+        self.out[2] = 0.
+
+    def response(self, t: float, xy_shifts: _Optional[_np.ndarray], z_shift: float):
+        """Process a mesaurement of the displacements.
+
+        Any parameter can be NAN, so we have to take it into account.
+
+        If xy_shifts has not been measured, a None will be received.
+
+        Must return a 3-item tuple representing the response in x, y and z
+        """
+        if xy_shifts is None:
+            x_shift = y_shift = 0.0
+        else:
+            x_shift, y_shift = _np.nanmean(xy_shifts, axis=0)
+            if x_shift is _np.nan:
+                _lgr.warning("x shift is NAN")
+                x_shift = 0.0
+            if y_shift is _np.nan:
+                _lgr.warning("y shift is NAN")
+                y_shift = 0.0
+
+        error = -_np.array((x_shift, y_shift, z_shift))
+        dError = error - self._last_error
+        self.out = self.out + self._Kp * dError + self._Ki * error
+        self._last_error = error
+        return self.out
 
 
 # class ScaledReactor:
