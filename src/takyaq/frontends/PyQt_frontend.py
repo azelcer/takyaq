@@ -538,10 +538,10 @@ class Frontend(QFrame):
                 y_mean = _np.nanmean(y_data, axis=1)
                 # update reports
                 self.xstd_value.setText(
-                    f"{_np.nanstd(x_mean):.2f}"
+                    f"{_np.nanstd(x_mean):.2f} - {_np.nanmean(_np.nanstd(x_data, axis=0)):.2f}"
                 )
                 self.ystd_value.setText(
-                    f"{_np.nanstd(y_mean):.2f}"
+                    f"{_np.nanstd(y_mean):.2f} - {_np.nanmean(_np.nanstd(y_data, axis=0)):.2f}"
                 )
             # update Graphs
             for i, p in enumerate(self._x_plots):
