@@ -34,6 +34,10 @@ class BasePiezo(_ABC):
         """Move to position x, y, z, specified in nanometers."""
         ...
 
+    def init(self):
+        """Perform initialization that must be performed on the running thread."""
+        ...
+
     # @_abstractclassmethod
     # def set_xy_position(self, x: float, y: float):
     #     ...

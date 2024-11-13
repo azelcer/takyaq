@@ -635,6 +635,8 @@ class Stabilizer(_th.Thread):
 
     def run(self):
         """Run main stabilization loop."""
+        if callable(getattr(self._piezo, 'init', None)):
+            self._piezo.init()
         initial_xy_positions = None
         initial_z_position = None
         self._pos[:] = self._piezo.get_position()
