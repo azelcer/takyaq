@@ -659,6 +659,7 @@ class Frontend(QFrame):
         data_layout.addWidget(self.export_chkbx)
         data_layout.addWidget(self.exportDataButton)
         data_layout.addWidget(self.clearDataButton)
+        self.exportDataButton.clicked.connect(lambda: self.goto_center())
         datagb.setFlat(True)
         
         PI_gb = QGroupBox("PI")
@@ -800,9 +801,9 @@ class Frontend(QFrame):
         grid.addWidget(self.xyzGraph, 1, 0)
         grid.addWidget(self.xyPoint, 1, 1, 1, 2)  # agrego 1,2 al final
 
-    def goto_center(self, *args):
-        self._piezo.set_position(1E4, 1E4, 1E4)
-        
+    def goto_center(self):
+        self._est.move(10, 10, 10)
+
     def closeEvent(self, *args, **kwargs):
         """Shut down stabilizer on exit."""
         super().closeEvent(*args, **kwargs)

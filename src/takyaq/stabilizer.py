@@ -190,7 +190,10 @@ class Stabilizer(_th.Thread):
         self._xy_track_event.set()
         self._z_roi_OK_event = _th.Event()
         self._z_roi_OK_event.set()
-        self._calibrate_event = _th.Event()
+        self._calibrate_event = _th.Event()  # Unset by default
+        self._move_event = _th.Event()
+        self._moveto_pos = _np.zeros((3,))
+
         self._rsp = corrector
         self._cb = callback
         # Avoid users from shooting themselves in the foot
@@ -378,6 +381,17 @@ class Stabilizer(_th.Thread):
         if enabled:
             return self.enable_z_stabilization()
         return self.disable_z_stabilization()
+
+    def move(self, x: float, y: float, z: float) -> bool:
+        """Start tracking and stabilization loop."""
+        if self._stop_event.is_set():
+            _lgr.warning("Trying to move without a running loop")
+            return False
+        if self._z_stabilization or self._xy_stabilization:
+            _lgr.warning("Trying to move while stabilization is active")
+            return False
+        self._moveto_pos[:] = x, y, z
+        self._move_event.set()
 
     def start_loop(self) -> bool:
         """Start tracking and stabilization loop."""
@@ -661,6 +675,11 @@ class Stabilizer(_th.Thread):
                 else:
                     _lgr.warning("Invalid calibration direction detected")
                 self._calibrate_event.clear()
+            if self._move_event.is_set():
+                self._piezo.set_position(*self._moveto_pos)
+                self._pos[:] = self._moveto_pos
+                print("movimos a ", self._pos)
+                self._move_event.clear()
             try:
                 image = self._camera.get_image()
                 t = _time.time()
