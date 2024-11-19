@@ -187,8 +187,91 @@ _XY_ROI_SIZE = 60
 _Z_ROI_SIZE = 100
 
 
+class ConfigWindow(QFrame):
+    def __init__(self, parent, controller: _bc.BaseController, *args, **kwargs):
+        # TODO: accept a loaded config parameter
+        super().__init__(*args, **kwargs)
+        self._controller = controller
+        self.setWindowFlag(Qt.WindowCloseButtonHint, False)
+        self._init_gui(parent)
+        self._PID_changed(0.0)
+
+    def _init_gui(self, parent):
+        self.setWindowTitle("Takyaq configuration")
+        layout = QVBoxLayout()
+
+        PI_gb = QGroupBox("PI")
+        PI_layout = QGridLayout()
+        PI_gb.setLayout(PI_layout)
+        self._KP_sp: list[QDoubleSpinBox] = []
+        self._KI_sp: list[QDoubleSpinBox] = []
+        self._KD_sp: list[QDoubleSpinBox] = []
+        PI_layout.addWidget(QLabel('Kp'), 1, 0)
+        PI_layout.addWidget(QLabel('Ki'), 2, 0)
+        PI_layout.addWidget(QLabel('Kd'), 3, 0)
+        for idx, coord in enumerate(['x', 'y', 'z']):
+            PI_layout.addWidget(QLabel(coord), 0, 1+idx)
+            kpsp = _create_spin(.75, 3, 0.005)
+            kpsp.valueChanged.connect(self._PID_changed)
+            self._KP_sp.append(kpsp)
+            kisp = _create_spin(0, 3, 0.005)
+            kisp.valueChanged.connect(self._PID_changed)
+            self._KI_sp.append(kisp)
+            kdsp = _create_spin(0, 3, 0.005)
+            kdsp.valueChanged.connect(self._PID_changed)
+            self._KD_sp.append(kdsp)
+            PI_layout.addWidget(kpsp, 1, 1+idx)
+            PI_layout.addWidget(kisp, 2, 1+idx)
+            PI_layout.addWidget(kdsp, 3, 1+idx)
+        PI_gb.setFlat(True)
+        layout.addWidget(PI_gb)
+
+        calibration_gb = QGroupBox("Calibration")
+        calibration_layout = QHBoxLayout()
+        calibration_gb.setLayout(calibration_layout)
+        self.calibrateXButton = QPushButton('X')
+        self.calibrateXButton.clicked.connect(parent._calibrate_x)
+        self.calibrateYButton = QPushButton('Y')
+        self.calibrateYButton.clicked.connect(parent._calibrate_y)
+        self.calibrateZButton = QPushButton('Z')
+        self.calibrateZButton.clicked.connect(parent._calibrate_z)
+        calibration_layout.addWidget(self.calibrateXButton)
+        calibration_layout.addWidget(self.calibrateYButton)
+        calibration_layout.addWidget(self.calibrateZButton)
+        calibration_gb.setFlat(True)
+        layout.addWidget(calibration_gb)
+
+        movement_gb = QGroupBox("Movement")
+        mv_layout = QGridLayout()
+        movement_gb.setLayout(mv_layout)
+        self._mv_sp: list[QDoubleSpinBox] = []
+        for idx, coord in enumerate(['x', 'y', 'z']):
+            mv_layout.addWidget(QLabel(coord), 0, idx)
+            pos_spin = _create_spin(0, 3, 0.01, 0., 20.)
+            mv_layout.addWidget(pos_spin, 1, idx)
+            self._mv_sp.append(pos_spin)
+        self._mv_btn = QPushButton('Move')
+        mv_layout.addWidget(self._mv_btn, 0, 3, 2, 1)
+        self._mv_btn.clicked.connect(lambda: parent.goto_position(
+            *[sb.value() for sb in self._mv_sp])
+            )
+        movement_gb.setFlat(True)
+        layout.addWidget(movement_gb)
+
+        self.setLayout(layout)
+
+    @pyqtSlot(float)
+    def _PID_changed(self, newvalue: float):
+        Kp = [sp.value() for sp in self._KP_sp]
+        Ki = [sp.value() for sp in self._KI_sp]
+        Kd = [sp.value() for sp in self._KD_sp]
+        self._controller.set_Kp(Kp)
+        self._controller.set_Ki(Ki)
+        self._controller.set_Kd(Kd)
+
+
 class Frontend(QFrame):
-    """PyQt Frontend for Takyq.
+    """PyQt Frontend for Takyaq.
 
     Implemented as a QFrame so it can be easily integrated within a larger app.
     """
@@ -227,7 +310,6 @@ class Frontend(QFrame):
         self._controller = controller
         self._camera_info = camera_info if camera_info else load_camera_info()
         self.setup_gui()
-        self._PID_changed(0.0)
         # Callback object
         self._cbojt = QReader()
         self._cbojt.new_data.connect(self.get_data)
@@ -241,11 +323,20 @@ class Frontend(QFrame):
         self._t0 = _time.time()
         self._est.start_loop()
         self._set_delay(True)
+        self._config_window = ConfigWindow(self, controller)
+        self._config_window.hide()
 
     def _load_config(self):
         self._config = load_config()
         self._MAX_POINTS = self._config['display_points']
         self._period = self._config['period']
+
+    @pyqtSlot(bool)
+    def clear_data(self, *args):
+        """Clears all data buffers."""
+        self.reset_data_buffers()
+        # self.reset_xy_data_buffers()
+        # self.reset_z_data_buffers()
         
     def reset_data_buffers(self):
         """Reset data buffers unrelated to localization.
@@ -467,14 +558,14 @@ class Frontend(QFrame):
                                        ))
         self._save_pos = 0
 
-    @pyqtSlot(float)
-    def _PID_changed(self, newvalue: float):
-        Kp = [sp.value() for sp in self._KP_sp]
-        Ki = [sp.value() for sp in self._KI_sp]
-        Kd = [sp.value() for sp in self._KD_sp]
-        self._controller.set_Kp(Kp)
-        self._controller.set_Ki(Ki)
-        self._controller.set_Kd(Kd)
+    # @pyqtSlot(float)
+    # def _PID_changed(self, newvalue: float):
+    #     Kp = [sp.value() for sp in self._KP_sp]
+    #     Ki = [sp.value() for sp in self._KI_sp]
+    #     Kd = [sp.value() for sp in self._KD_sp]
+    #     self._controller.set_Kp(Kp)
+    #     self._controller.set_Ki(Ki)
+    #     self._controller.set_Kd(Kd)
 
     @pyqtSlot(float, _np.ndarray, float, _np.ndarray)
     def get_data(self, t: float, img: _np.ndarray, z: float, xy_shifts: _np.ndarray):
@@ -604,6 +695,10 @@ class Frontend(QFrame):
         self.delete_roiButton = QPushButton("Delete last xy ROI")
         self.delete_roiButton.clicked.connect(self._remove_xy_ROI)
         self.delete_roiButton.setEnabled(False)
+        self.toggle_options_button = QPushButton("Show Options Window")
+        self.toggle_options_button.clicked.connect(self._toggle_options_window)
+        self.toggle_options_button.setEnabled(True)
+        self.toggle_options_button.setCheckable(True)
 
         # Tracking control
         trackgb = QGroupBox("Track")
@@ -654,51 +749,52 @@ class Frontend(QFrame):
         datagb.setLayout(data_layout)
         self.export_chkbx = QCheckBox("Save")
         self.export_chkbx.stateChanged.connect(self._change_save)
-        self.exportDataButton = QPushButton("Export - Go to center")
+        self.exportDataButton = QPushButton("Export NOW")
         self.clearDataButton = QPushButton("Clear")
         data_layout.addWidget(self.export_chkbx)
         data_layout.addWidget(self.exportDataButton)
         data_layout.addWidget(self.clearDataButton)
         self.exportDataButton.clicked.connect(lambda: self.goto_center())
+        self.clearDataButton.clicked.connect(self.clear_data)
         datagb.setFlat(True)
         
-        PI_gb = QGroupBox("PI")
-        PI_layout = QGridLayout()
-        PI_gb.setLayout(PI_layout)
-        self._KP_sp: list[QDoubleSpinBox] = []
-        self._KI_sp: list[QDoubleSpinBox] = []
-        self._KD_sp: list[QDoubleSpinBox] = []
-        PI_layout.addWidget(QLabel('Kp'), 1, 0)
-        PI_layout.addWidget(QLabel('Ki'), 2, 0)
-        PI_layout.addWidget(QLabel('Kd'), 3, 0)
-        for idx, coord in enumerate(['x', 'y', 'z']):
-            PI_layout.addWidget(QLabel(coord), 0, 1+idx)
-            kpsp = _create_spin(.75, 3, 0.005)
-            kpsp.valueChanged.connect(self._PID_changed)
-            self._KP_sp.append(kpsp)
-            kisp = _create_spin(0, 3, 0.005)
-            kisp.valueChanged.connect(self._PID_changed)
-            self._KI_sp.append(kisp)
-            kdsp = _create_spin(0, 3, 0.005)
-            kdsp.valueChanged.connect(self._PID_changed)
-            self._KD_sp.append(kdsp)
-            PI_layout.addWidget(kpsp, 1, 1+idx)
-            PI_layout.addWidget(kisp, 2, 1+idx)
-            PI_layout.addWidget(kdsp, 3, 1+idx)
-        PI_gb.setFlat(True)
+        # PI_gb = QGroupBox("PI")
+        # PI_layout = QGridLayout()
+        # PI_gb.setLayout(PI_layout)
+        # self._KP_sp: list[QDoubleSpinBox] = []
+        # self._KI_sp: list[QDoubleSpinBox] = []
+        # self._KD_sp: list[QDoubleSpinBox] = []
+        # PI_layout.addWidget(QLabel('Kp'), 1, 0)
+        # PI_layout.addWidget(QLabel('Ki'), 2, 0)
+        # PI_layout.addWidget(QLabel('Kd'), 3, 0)
+        # for idx, coord in enumerate(['x', 'y', 'z']):
+        #     PI_layout.addWidget(QLabel(coord), 0, 1+idx)
+        #     kpsp = _create_spin(.75, 3, 0.005)
+        #     kpsp.valueChanged.connect(self._PID_changed)
+        #     self._KP_sp.append(kpsp)
+        #     kisp = _create_spin(0, 3, 0.005)
+        #     kisp.valueChanged.connect(self._PID_changed)
+        #     self._KI_sp.append(kisp)
+        #     kdsp = _create_spin(0, 3, 0.005)
+        #     kdsp.valueChanged.connect(self._PID_changed)
+        #     self._KD_sp.append(kdsp)
+        #     PI_layout.addWidget(kpsp, 1, 1+idx)
+        #     PI_layout.addWidget(kisp, 2, 1+idx)
+        #     PI_layout.addWidget(kdsp, 3, 1+idx)
+        # PI_gb.setFlat(True)
         
-        calibration_gb = QGroupBox("Calibration")
-        calibration_layout = QHBoxLayout()
-        calibration_gb.setLayout(calibration_layout)
-        self.calibrateXButton = QPushButton('X')
-        self.calibrateXButton.clicked.connect(self._calibrate_x)
-        self.calibrateYButton = QPushButton('Y')
-        self.calibrateYButton.clicked.connect(self._calibrate_y)
-        self.calibrateZButton = QPushButton('Z')
-        self.calibrateZButton.clicked.connect(self._calibrate_z)
-        calibration_layout.addWidget(self.calibrateXButton)
-        calibration_layout.addWidget(self.calibrateYButton)
-        calibration_layout.addWidget(self.calibrateZButton)
+        # calibration_gb = QGroupBox("Calibration")
+        # calibration_layout = QHBoxLayout()
+        # calibration_gb.setLayout(calibration_layout)
+        # self.calibrateXButton = QPushButton('X')
+        # self.calibrateXButton.clicked.connect(self._calibrate_x)
+        # self.calibrateYButton = QPushButton('Y')
+        # self.calibrateYButton.clicked.connect(self._calibrate_y)
+        # self.calibrateZButton = QPushButton('Z')
+        # self.calibrateZButton.clicked.connect(self._calibrate_z)
+        # calibration_layout.addWidget(self.calibrateXButton)
+        # calibration_layout.addWidget(self.calibrateYButton)
+        # calibration_layout.addWidget(self.calibrateZButton)
         
         delay_layout = QHBoxLayout()
         self.delay_le = QLineEdit(str(self._period))
@@ -715,15 +811,16 @@ class Frontend(QFrame):
         param_layout.addWidget(self.xyROIButton)
         param_layout.addWidget(self.zROIButton)
         param_layout.addWidget(self.delete_roiButton)
+        param_layout.addWidget(self.toggle_options_button)
 
         param_layout.addWidget(trackgb)
         param_layout.addWidget(lockgb)
-        param_layout.addWidget(PI_gb)
+        # param_layout.addWidget(PI_gb)
         param_layout.addWidget(datagb)
 
         param_layout.addStretch()
 
-        param_layout.addWidget(calibration_gb)
+        # param_layout.addWidget(calibration_gb)
         param_layout.addLayout(delay_layout)
 
         # stats widget
@@ -801,8 +898,17 @@ class Frontend(QFrame):
         grid.addWidget(self.xyzGraph, 1, 0)
         grid.addWidget(self.xyPoint, 1, 1, 1, 2)  # agrego 1,2 al final
 
-    def goto_center(self):
-        self._est.move(10, 10, 10)
+    def goto_position(self, x, y, z):
+        self._est.move(x, y, z)
+
+    @pyqtSlot(bool)
+    def _toggle_options_window(self, checked: bool):
+        if checked:
+            self.toggle_options_button.setText("Hide options window")
+            self._config_window.show()
+        else:
+            self.toggle_options_button.setText("Show options window")
+            self._config_window.hide()
 
     def closeEvent(self, *args, **kwargs):
         """Shut down stabilizer on exit."""
@@ -810,6 +916,7 @@ class Frontend(QFrame):
         self._est.stop_loop()
         if self._save_data:
             self._change_save(Qt.CheckState.Unchecked)
+        self._config_window.close()
 
 
 if __name__ == "__main__":
@@ -840,7 +947,7 @@ if __name__ == "__main__":
     responder = PIReactor()
     gui = Frontend(camera, piezo, responder, camera_info)
 
-    gui.setWindowTitle("Takyq with PyQt frontend")
+    gui.setWindowTitle("Takyaq with PyQt frontend")
     gui.show()
     gui.activateWindow()
     app.exec_()
