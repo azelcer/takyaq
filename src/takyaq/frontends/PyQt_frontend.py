@@ -278,7 +278,8 @@ class Frontend(QFrame):
     # For displaying
     _t_data = _np.full((_MAX_POINTS,), _np.nan)
     _z_data = _np.full((_MAX_POINTS,), _np.nan)
-    _x_data = _np.full((_MAX_POINTS, 0), _np.nan)
+    # _x_data = _np.full((_MAX_POINTS, 0), _np.nan)
+    _xy_data = _np.full((_MAX_POINTS, 0, 2), _np.nan)
     _graph_pos = 0
 
     # For saving
@@ -351,8 +352,8 @@ class Frontend(QFrame):
 
     def reset_xy_data_buffers(self, roi_len: int):
         """Reset data buffers related to XY localization."""
-        self._x_data = _np.full((self._MAX_POINTS, roi_len), _np.nan)  # sample #, roi
-        self._y_data = _np.full((self._MAX_POINTS, roi_len), _np.nan)  # sample #, roi
+        # self._x_data = _np.full((self._MAX_POINTS, roi_len), _np.nan)  # sample #, roi
+        # self._y_data = _np.full((self._MAX_POINTS, roi_len), _np.nan)  # sample #, roi
         self._xy_data = _np.full((self._MAX_POINTS, roi_len, 2), _np.nan)  # sample #, roi
 
     def reset_z_data_buffers(self):
@@ -473,7 +474,7 @@ class Frontend(QFrame):
             self._z_locking_enabled = True
 
     @pyqtSlot(int)
-    def _send_xy_rois(self, state: int):
+    def _send_xy_rois_and_track(self, state: int):
         """Send XY roi data to the stabilizer and start tracking the XY position."""
         if state == Qt.CheckState.Unchecked:
             if self._xy_locking_enabled:
@@ -490,6 +491,9 @@ class Frontend(QFrame):
             if self._xy_tracking_enabled:
                 _lgr.warning("XY tracking was already enabled")
                 return
+            self._npy_dtype = _np.dtype([
+                ('t', _np.float64), ('z', _np.float64),
+                ('xy', _np.float64, (len(self._roilist), 2))])
             self.reset_graphs(len(self._roilist))
             self.reset_xy_data_buffers(len(self._roilist))
             if not self._z_tracking_enabled:
@@ -535,8 +539,8 @@ class Frontend(QFrame):
     def _change_save(self, check_status: int):
         if check_status == Qt.CheckState.Unchecked:
             self._save_data = False
-            ...
             # Grabar pucho que queda
+            self._save_and_reset()
             self._xy_fd.close()
             self._xy_fd = None
         else:
@@ -550,12 +554,14 @@ class Frontend(QFrame):
 
     def _save_and_reset(self):
         _lgr.info("GRABAR")
-        
+
 # ValueError: setting an array element with a sequence. The requested array has an inhomogeneous shape after 2 dimensions. The detected shape was (3, 100) + inhomogeneous part.
-        _np.save(self._xy_fd, _np.array((self._t_data[:self._save_pos],
-                                        self._x_data[:self._save_pos],
-                                        self._y_data[:self._save_pos])
-                                       ))
+        save_data = _np.array(  # horrible
+            list(zip(self._t_data[:self._save_pos],
+                self._z_data[:self._save_pos],
+                self._xy_data[:self._save_pos])),
+            dtype=self._npy_dtype)
+        _np.save(self._xy_fd, save_data)
         self._save_pos = 0
 
     # @pyqtSlot(float)
@@ -579,9 +585,9 @@ class Frontend(QFrame):
             if self._z_tracking_enabled:
                 self._z_data[0:-1] = self._z_data[1:]
             if self._xy_tracking_enabled and xy_shifts.shape[0]:
-                self._x_data[0:-1] = self._x_data[1:]
-                self._y_data[0:-1] = self._y_data[1:]
-                # self._xy_data[0:-1] = self._xy_data[1:]
+                # self._x_data[0:-1] = self._x_data[1:]
+                # self._y_data[0:-1] = self._y_data[1:]
+                self._xy_data[0:-1] = self._xy_data[1:]
             self._graph_pos -= 1
 
         # manage image data
@@ -615,14 +621,15 @@ class Frontend(QFrame):
                 print("Excepcion ploteando z:", e, (type(e)))
 
         if self._xy_tracking_enabled and xy_shifts.shape[0]:
-            self._x_data[self._graph_pos] = xy_shifts[:, 0]
-            self._y_data[self._graph_pos] = xy_shifts[:, 1]
-            # self._xy_data[self._graph_pos] = xy_shifts
+            # self._x_data[self._graph_pos] = xy_shifts[:, 0]
+            # self._y_data[self._graph_pos] = xy_shifts[:, 1]
+            self._xy_data[self._graph_pos] = xy_shifts
             t_data = _np.copy(t_data)  # pyqtgraph does not keep a cpoy
 
-            x_data = self._x_data[: self._graph_pos + 1]
-            y_data = self._y_data[: self._graph_pos + 1]
-            # x_data, y_data = self._xy_data[: self._graph_pos + 1]
+            # x_data = self._x_data[: self._graph_pos + 1]
+            # y_data = self._y_data[: self._graph_pos + 1]
+            x_data = self._xy_data[: self._graph_pos + 1, :, 0]
+            y_data = self._xy_data[: self._graph_pos + 1, :, 1]
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 x_mean = _np.nanmean(x_data, axis=1)
@@ -720,7 +727,7 @@ class Frontend(QFrame):
         )
         trackgb.setFlat(True)
         self.trackZBox.stateChanged.connect(self._send_z_rois)
-        self.trackXYBox.stateChanged.connect(self._send_xy_rois)
+        self.trackXYBox.stateChanged.connect(self._send_xy_rois_and_track)
 
         # Correction controls
         lockgb = QGroupBox("Lock")
