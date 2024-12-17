@@ -61,7 +61,7 @@ if __name__ == "__main__":
     else:
         app = QApplication.instance()
     app.setStyle('Windows')
-    gui = Frontend(camera, piezo, controller, None)#camera_info)
+    gui = Frontend(camera, piezo, controller, camera_info)
 
     gui.setWindowTitle("Takyaq with PyQt frontend")
     gui.show()

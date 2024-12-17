@@ -338,7 +338,7 @@ class Frontend(QFrame):
         self.reset_data_buffers()
         # self.reset_xy_data_buffers()
         # self.reset_z_data_buffers()
-        
+
     def reset_data_buffers(self):
         """Reset data buffers unrelated to localization.
 
