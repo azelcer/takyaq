@@ -17,6 +17,8 @@ Use:
 """
 import numpy as _np
 import time as _time
+import datetime as _datetime
+import pathlib as _pathlib
 from typing import Optional as _Optional, BinaryIO as _BinaryIO
 from configparser import ConfigParser as _ConfigParser
 import warnings
@@ -24,7 +26,6 @@ from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject, Qt
 from PyQt5.QtWidgets import (
     QGroupBox,
     QFrame,
-    QApplication,
     QGridLayout,
     QLabel,
     QPushButton,
@@ -449,7 +450,7 @@ class Frontend(QFrame):
         self.zROIButton.setEnabled(False)
 
     @pyqtSlot(int)
-    def _send_z_rois(self, state: int):
+    def _send_z_rois_and_track(self, state: int):
         """Send Z roi data to the stabilizer and start tracking the Z position."""
         if state == Qt.CheckState.Unchecked:
             if self._z_locking_enabled:
@@ -552,51 +553,47 @@ class Frontend(QFrame):
     @pyqtSlot(int)
     def _change_save(self, check_status: int):
         if check_status == Qt.CheckState.Unchecked:
-            self._save_data = False
-            # Grabar pucho que queda
-            self._save_and_reset()
-            self._xy_fd.close()
-            self._xy_fd = None
-            self._z_fd.close()
-            self._z_fd = None
+            if self._save_data:  # in case file open failed
+                self._save_and_reset()
+                self._xy_fd.close()
+                self._xy_fd = None
+                self._z_fd.close()
+                self._z_fd = None
+                self._save_data = False
         else:
-            self._save_data = True
-            self._save_pos = 0
+            base_dir = _pathlib.Path.home() / "takyaq_data"
+            base_dir.mkdir(parents=True, exist_ok=True)
+            date_str = _datetime.datetime.now().isoformat(
+                timespec='seconds').replace('-', '').replace(':', '-')
+            xy_filename = base_dir / ('xy_data' + date_str + '.npy')
+            z_filename = base_dir / ('z_data' + date_str + '.npy')
             try:
-                self._xy_fd = open("/tmp/xy_data.npy", 'wb')  # TODO: change filename
-                self._z_fd = open("/tmp/z_data.npy", 'wb')  # TODO: change filename
+                self._xy_fd = open(xy_filename, 'wb')
+                self._z_fd = open(z_filename, 'wb')
             except Exception as e:
                 if self._xy_fd:
                     self._xy_fd.close()
                     self._xy_fd = None
                 _lgr.error("Can not open output files: %s (%s)", type(e), e)
                 self.export_chkbx.setChecked(False)
+            self._save_data = True
+            self._save_pos = 0
 
     def _save_and_reset(self):
-        _lgr.info("GRABAR")
         if self._xy_tracking_enabled:
-            save_data = _np.array(  # horrible
+            save_data = _np.array(
                 list(zip(self._t_save_data[:self._save_pos],
                          self._xy_save_data[:self._save_pos])),
                 dtype=self._npy_xy_dtype)
             _np.save(self._xy_fd, save_data)
         if self._z_tracking_enabled:
-            save_data = _np.array(  # horrible
+            save_data = _np.array(
                 list(zip(self._t_save_data[:self._save_pos],
                          self._z_save_data[:self._save_pos],
                          )),
                 dtype=_NPY_Z_DTYPE)
             _np.save(self._z_fd, save_data)
         self._save_pos = 0
-
-    # @pyqtSlot(float)
-    # def _PID_changed(self, newvalue: float):
-    #     Kp = [sp.value() for sp in self._KP_sp]
-    #     Ki = [sp.value() for sp in self._KI_sp]
-    #     Kd = [sp.value() for sp in self._KD_sp]
-    #     self._controller.set_Kp(Kp)
-    #     self._controller.set_Ki(Ki)
-    #     self._controller.set_Kd(Kd)
 
     @pyqtSlot(float, _np.ndarray, float, _np.ndarray)
     def get_data(self, t: float, img: _np.ndarray, z: float, xy_shifts: _np.ndarray):
@@ -646,16 +643,16 @@ class Frontend(QFrame):
                 print("Excepcion ploteando z:", e, (type(e)))
 
         if self._xy_tracking_enabled and xy_shifts.shape[0]:
-            self._xy_save_data[self._save_pos]= self._xy_data[self._graph_pos] = xy_shifts
+            self._xy_save_data[self._save_pos] = self._xy_data[self._graph_pos] = xy_shifts
             t_data = _np.copy(t_data)  # pyqtgraph does not keep a cpoy
 
             x_data = self._xy_data[: self._graph_pos + 1, :, 0]
             y_data = self._xy_data[: self._graph_pos + 1, :, 1]
+            # update reports
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 x_mean = _np.nanmean(x_data, axis=1)
                 y_mean = _np.nanmean(y_data, axis=1)
-                # update reports
                 self.xstd_value.setText(
                     f"{_np.nanstd(x_mean):.2f} - {_np.nanmean(_np.nanstd(x_data, axis=0)):.2f}"
                 )
@@ -748,7 +745,7 @@ class Frontend(QFrame):
             self.trackZBox,
         )
         trackgb.setFlat(True)
-        self.trackZBox.stateChanged.connect(self._send_z_rois)
+        self.trackZBox.stateChanged.connect(self._send_z_rois_and_track)
         self.trackXYBox.stateChanged.connect(self._send_xy_rois_and_track)
 
         # Correction controls
@@ -778,53 +775,12 @@ class Frontend(QFrame):
         datagb.setLayout(data_layout)
         self.export_chkbx = QCheckBox("Save")
         self.export_chkbx.stateChanged.connect(self._change_save)
-        self.exportDataButton = QPushButton("Export NOW")
         self.clearDataButton = QPushButton("Clear")
         data_layout.addWidget(self.export_chkbx)
-        data_layout.addWidget(self.exportDataButton)
         data_layout.addWidget(self.clearDataButton)
-        self.exportDataButton.clicked.connect(lambda: self.goto_center())
         self.clearDataButton.clicked.connect(self.clear_data)
         datagb.setFlat(True)
-        
-        # PI_gb = QGroupBox("PI")
-        # PI_layout = QGridLayout()
-        # PI_gb.setLayout(PI_layout)
-        # self._KP_sp: list[QDoubleSpinBox] = []
-        # self._KI_sp: list[QDoubleSpinBox] = []
-        # self._KD_sp: list[QDoubleSpinBox] = []
-        # PI_layout.addWidget(QLabel('Kp'), 1, 0)
-        # PI_layout.addWidget(QLabel('Ki'), 2, 0)
-        # PI_layout.addWidget(QLabel('Kd'), 3, 0)
-        # for idx, coord in enumerate(['x', 'y', 'z']):
-        #     PI_layout.addWidget(QLabel(coord), 0, 1+idx)
-        #     kpsp = _create_spin(.75, 3, 0.005)
-        #     kpsp.valueChanged.connect(self._PID_changed)
-        #     self._KP_sp.append(kpsp)
-        #     kisp = _create_spin(0, 3, 0.005)
-        #     kisp.valueChanged.connect(self._PID_changed)
-        #     self._KI_sp.append(kisp)
-        #     kdsp = _create_spin(0, 3, 0.005)
-        #     kdsp.valueChanged.connect(self._PID_changed)
-        #     self._KD_sp.append(kdsp)
-        #     PI_layout.addWidget(kpsp, 1, 1+idx)
-        #     PI_layout.addWidget(kisp, 2, 1+idx)
-        #     PI_layout.addWidget(kdsp, 3, 1+idx)
-        # PI_gb.setFlat(True)
-        
-        # calibration_gb = QGroupBox("Calibration")
-        # calibration_layout = QHBoxLayout()
-        # calibration_gb.setLayout(calibration_layout)
-        # self.calibrateXButton = QPushButton('X')
-        # self.calibrateXButton.clicked.connect(self._calibrate_x)
-        # self.calibrateYButton = QPushButton('Y')
-        # self.calibrateYButton.clicked.connect(self._calibrate_y)
-        # self.calibrateZButton = QPushButton('Z')
-        # self.calibrateZButton.clicked.connect(self._calibrate_z)
-        # calibration_layout.addWidget(self.calibrateXButton)
-        # calibration_layout.addWidget(self.calibrateYButton)
-        # calibration_layout.addWidget(self.calibrateZButton)
-        
+
         delay_layout = QHBoxLayout()
         self.delay_le = QLineEdit(str(self._period))
         self.delay_le.setValidator(QDoubleValidator(1E-3, 1., 3))
@@ -928,6 +884,7 @@ class Frontend(QFrame):
         grid.addWidget(self.xyPoint, 1, 1, 1, 2)  # agrego 1,2 al final
 
     def goto_position(self, x, y, z):
+        """Move to a defined position."""
         self._est.move(x, y, z)
 
     @pyqtSlot(bool)
@@ -946,38 +903,3 @@ class Frontend(QFrame):
         if self._save_data:
             self._change_save(Qt.CheckState.Unchecked)
         self._config_window.close()
-
-
-if __name__ == "__main__":
-    # Mock camera, replace with a real one
-    import mocks
-    from responders import PIReactor
-
-    _CAMERA_XY_NMPPX = 23.5
-    _CAMERA_Z_NMPPX = 10
-    camera_info = CameraInfo(_CAMERA_XY_NMPPX, _CAMERA_Z_NMPPX, _np.pi/4,)
-
-    camera = mocks.MockCamera(
-        _CAMERA_XY_NMPPX,
-        _CAMERA_XY_NMPPX,
-        _CAMERA_Z_NMPPX,
-        _CAMERA_XY_NMPPX * 17,  # en pixeles
-        _np.pi/4,
-        1,  # Center position noise in pixels
-        10,
-    )
-    # Mock piezo motor, replace with your own
-    piezo = mocks.MockPiezo(camera)
-
-    if not QApplication.instance():
-        app = QApplication([])
-    else:
-        app = QApplication.instance()
-    responder = PIReactor()
-    gui = Frontend(camera, piezo, responder, camera_info)
-
-    gui.setWindowTitle("Takyaq with PyQt frontend")
-    gui.show()
-    gui.activateWindow()
-    app.exec_()
-    app.quit()
