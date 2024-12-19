@@ -52,13 +52,13 @@ _CONFIG_FILENAME = 'takyaq.ini'
 
 _DEFAULT_CONFIG = {
         'display_points': 200,
-        'save_buffer_length': 100,
-        'period': 0.200,
+        'save_buffer_length': 500,
+        'period': 0.05,
         'XY ROIS': {
-            'size': 200,
+            'size': 60,
         },
         'Z ROI': {
-            'size': 60,
+            'size': 100,
         }
     }
 
@@ -138,17 +138,17 @@ def save_config(config_data: dict, filename: str = _CONFIG_FILENAME):
     config = _ConfigParser()
     config["General"] = {
         'display_points': config_data.get('display_points', 200),
-        'save_buffer': config_data.get('display_points', 200),
+        'save_buffer_length': config_data.get('save_buffer_length', 200),
         'period': config_data.get('period', 0.100),
     }
     XY_dict = config_data.get('XY ROIS', {})
     config['XY ROIS'] = {
-        'size': XY_dict.get('size', 200),
+        'size': XY_dict.get('size', 60),
         }
     # TODO: guardar posicion ROI Z
     Z_dict = config_data.get('Z ROI', {})
     config['Z ROI'] = {
-        'size': Z_dict.get('size', 60),
+        'size': Z_dict.get('size', 100),
         }
     with open(filename, "wt") as configfile:
         config.write(configfile)
@@ -166,10 +166,18 @@ def load_config(filename: str = _CONFIG_FILENAME):
         return rv
     if 'General' in config:
         gnrl = config['General']
-        for k in ('display_points', 'save_buffer'):
+        for k in ('display_points', 'save_buffer_length'):
             rv[k] = gnrl.getint(k)
         for k in ('period'):
             rv[k] = gnrl.getfloat(k)
+    if 'XY ROIS' in config:
+        xy_cfg = config['XY ROIS']
+        for k in ('size',):
+            rv['XY ROIS'][k] = xy_cfg.getint(k)
+    if 'Z ROI' in config:
+        z_cfg = config['Z ROI']
+        for k in ('size',):
+            rv['Z ROI'][k] = z_cfg.getint(k)
     return rv
 
 
@@ -185,11 +193,12 @@ def load_camera_info(filename: str = _CONFIG_FILENAME) -> CameraInfo:
     angle = config.getfloat('Camera', 'angle')
     return CameraInfo(nm_ppx_xy, nm_ppx_z, angle)
 
+
 # Globals (should go into a configuration file)
-_MAX_POINTS = 200
-_SAVE_PERIOD = 100  # for now, must be <= _MAX_POINTS
-_XY_ROI_SIZE = 60
-_Z_ROI_SIZE = 100
+# _MAX_POINTS = 200
+# _SAVE_PERIOD = 100  # for now, must be <= _MAX_POINTS
+# _XY_ROI_SIZE = 60
+# _Z_ROI_SIZE = 100
 
 
 class ConfigWindow(QFrame):
@@ -281,10 +290,9 @@ class Frontend(QFrame):
     Implemented as a QFrame so it can be easily integrated within a larger app.
     """
     # For displaying
-    _t_data = _np.full((_MAX_POINTS,), _np.nan)
-    _z_data = _np.full((_MAX_POINTS,), _np.nan)
-    # _x_data = _np.full((_MAX_POINTS, 0), _np.nan)
-    _xy_data = _np.full((_MAX_POINTS, 0, 2), _np.nan)
+    _t_data = _np.full((0,), _np.nan)
+    _z_data = _np.full((0,), _np.nan)
+    _xy_data = _np.full((0, 0, 2), _np.nan)
     _graph_pos = 0
 
     # For saving
@@ -293,12 +301,12 @@ class Frontend(QFrame):
     # data saving and graphs
     _save_pos = 0  # shared for xy and z so data alignment is easier
     _save_data: bool = False
-    _SAVE_PERIOD = _SAVE_PERIOD  # todo: get from config
+    _SAVE_PERIOD = 0.05
     _xy_fd: _BinaryIO = None
     _z_fd: _BinaryIO = None
-    _t_save_data = _np.full((_SAVE_PERIOD,), _np.nan)
-    _z_save_data = _np.full((_SAVE_PERIOD,), _np.nan)
-    _xy_save_data = _np.full((_SAVE_PERIOD, 0, 2), _np.nan)
+    _t_save_data = _np.full((0,), _np.nan)
+    _z_save_data = _np.full((0,), _np.nan)
+    _xy_save_data = _np.full((0, 0, 2), _np.nan)
 
     _x_plots = []
     _y_plots = []
@@ -332,7 +340,6 @@ class Frontend(QFrame):
         self._est = Stabilizer(
             self._camera, self._piezo, self._camera_info, controller, self._cbojt.cb
         )
-        self._est.set_min_period(0.15)
         self._t0 = _time.time()
         self._est.start_loop()
         self._set_delay(True)
@@ -343,6 +350,8 @@ class Frontend(QFrame):
         self._config = load_config()
         self._MAX_POINTS = self._config['display_points']
         self._SAVE_PERIOD = self._config['save_buffer_length']
+        self._XY_ROI_SIZE = self._config['XY ROIS']['size']
+        self._Z_ROI_SIZE = self._config['Z ROI']['size']
         self._period = self._config['period']
 
     @pyqtSlot(bool)
@@ -414,8 +423,8 @@ class Frontend(QFrame):
             _lgr.warning("No image to set ROI")
             return
         w, h = self.lastimage.shape[0:2]
-        ROIpos = (w / 2 - _XY_ROI_SIZE / 2, h / 2 - _XY_ROI_SIZE / 2)
-        ROIsize = (_XY_ROI_SIZE, _XY_ROI_SIZE)
+        ROIpos = (w / 2 - self._XY_ROI_SIZE / 2, h / 2 - self._XY_ROI_SIZE / 2)
+        ROIsize = (self._XY_ROI_SIZE, self._XY_ROI_SIZE)
         roi = _pg.ROI(ROIpos, ROIsize, rotatable=False)
         roi.addScaleHandle((1, 0), (0, 1), lockAspect=True)
         self.image_pi.addItem(roi)
@@ -441,8 +450,8 @@ class Frontend(QFrame):
             _lgr.warning("A Z ROI already exists")
             return
         w, h = self.lastimage.shape[0:2]
-        ROIpos = (w / 2 - _Z_ROI_SIZE / 2, h / 2 - _Z_ROI_SIZE / 2)
-        ROIsize = (_Z_ROI_SIZE, _Z_ROI_SIZE)
+        ROIpos = (w / 2 - self._Z_ROI_SIZE / 2, h / 2 - self._Z_ROI_SIZE / 2)
+        ROIsize = (self._Z_ROI_SIZE, self._Z_ROI_SIZE)
         roi = _pg.ROI(ROIpos, ROIsize, pen={"color": "red", "width": 2}, rotatable=False)
         roi.addScaleHandle((1, 0), (0, 1), lockAspect=True)
         self.image_pi.addItem(roi)
@@ -598,7 +607,7 @@ class Frontend(QFrame):
     @pyqtSlot(float, _np.ndarray, float, _np.ndarray)
     def get_data(self, t: float, img: _np.ndarray, z: float, xy_shifts: _np.ndarray):
         """Receive data from the stabilizer and graph it."""
-        if self._save_pos >= _SAVE_PERIOD and self._save_data:
+        if self._save_pos >= self._SAVE_PERIOD and self._save_data:
             self._save_and_reset()
 
         # Graphics
