@@ -1,4 +1,3 @@
-     # -*- coding: utf-8 -*-
 """
 Sample PyQT frontend for Takyaq.
 
@@ -52,7 +51,7 @@ _CONFIG_FILENAME = 'takyaq.ini'
 
 _DEFAULT_CONFIG = {
         'display_points': 200,
-        'save_buffer': 100,
+        'save_buffer_length': 100,
         'period': 0.200,
         'XY ROIS': {
             'size': 200,
@@ -61,6 +60,11 @@ _DEFAULT_CONFIG = {
             'size': 60,
         }
     }
+
+_NPY_Z_DTYPE = _np.dtype([
+    ('t', _np.float64),
+    ('z', _np.float64),
+    ])
 
 
 class GroupedCheckBoxes:
@@ -283,10 +287,17 @@ class Frontend(QFrame):
     _graph_pos = 0
 
     # For saving
-    _save_pos = 0
+    # z and xy are completely decoupled. As we roll data for graphic
+    # and we do not need huge amounts of memory, we decouple completely
+    # data saving and graphs
+    _save_pos = 0  # shared for xy and z so data alignment is easier
     _save_data: bool = False
-    _period = _SAVE_PERIOD
+    _SAVE_PERIOD = _SAVE_PERIOD  # todo: get from config
     _xy_fd: _BinaryIO = None
+    _z_fd: _BinaryIO = None
+    _t_save_data = _np.full((_SAVE_PERIOD,), _np.nan)
+    _z_save_data = _np.full((_SAVE_PERIOD,), _np.nan)
+    _xy_save_data = _np.full((_SAVE_PERIOD, 0, 2), _np.nan)
 
     _x_plots = []
     _y_plots = []
@@ -330,6 +341,7 @@ class Frontend(QFrame):
     def _load_config(self):
         self._config = load_config()
         self._MAX_POINTS = self._config['display_points']
+        self._SAVE_PERIOD = self._config['save_buffer_length']
         self._period = self._config['period']
 
     @pyqtSlot(bool)
@@ -346,19 +358,20 @@ class Frontend(QFrame):
         """
         # self._I_data = _np.full((self._MAX_POINTS,), _np.nan)
         self._t_data = _np.full((self._MAX_POINTS,), _np.nan)
+        self._t_save_data = _np.full((self._SAVE_PERIOD,), _np.nan)
         self._graph_pos = 0
         self._save_pos = 0
         self._t0 = _time.time()
 
     def reset_xy_data_buffers(self, roi_len: int):
         """Reset data buffers related to XY localization."""
-        # self._x_data = _np.full((self._MAX_POINTS, roi_len), _np.nan)  # sample #, roi
-        # self._y_data = _np.full((self._MAX_POINTS, roi_len), _np.nan)  # sample #, roi
         self._xy_data = _np.full((self._MAX_POINTS, roi_len, 2), _np.nan)  # sample #, roi
+        self._xy_save_data = _np.full((self._SAVE_PERIOD, roi_len, 2), _np.nan)
 
     def reset_z_data_buffers(self):
         """Reset data buffers related to Z localization."""
         self._z_data = _np.full((self._MAX_POINTS,), _np.nan)
+        self._z_save_data = _np.full((self._SAVE_PERIOD,), _np.nan)
 
     def reset_graphs(self, roi_len: int):
         """Reset graphs contents and adjust to number of XY ROIs."""
@@ -491,9 +504,10 @@ class Frontend(QFrame):
             if self._xy_tracking_enabled:
                 _lgr.warning("XY tracking was already enabled")
                 return
-            self._npy_dtype = _np.dtype([
-                ('t', _np.float64), ('z', _np.float64),
-                ('xy', _np.float64, (len(self._roilist), 2))])
+            self._npy_xy_dtype = _np.dtype([
+                ('t', _np.float64),
+                ('xy', _np.float64, (len(self._roilist), 2)),
+                ])
             self.reset_graphs(len(self._roilist))
             self.reset_xy_data_buffers(len(self._roilist))
             if not self._z_tracking_enabled:
@@ -543,25 +557,36 @@ class Frontend(QFrame):
             self._save_and_reset()
             self._xy_fd.close()
             self._xy_fd = None
+            self._z_fd.close()
+            self._z_fd = None
         else:
             self._save_data = True
             self._save_pos = 0
             try:
                 self._xy_fd = open("/tmp/xy_data.npy", 'wb')  # TODO: change filename
+                self._z_fd = open("/tmp/z_data.npy", 'wb')  # TODO: change filename
             except Exception as e:
-                _lgr.error("Can not open output file: %s (%s)", type(e), e)
+                if self._xy_fd:
+                    self._xy_fd.close()
+                    self._xy_fd = None
+                _lgr.error("Can not open output files: %s (%s)", type(e), e)
                 self.export_chkbx.setChecked(False)
 
     def _save_and_reset(self):
         _lgr.info("GRABAR")
-
-# ValueError: setting an array element with a sequence. The requested array has an inhomogeneous shape after 2 dimensions. The detected shape was (3, 100) + inhomogeneous part.
-        save_data = _np.array(  # horrible
-            list(zip(self._t_data[:self._save_pos],
-                self._z_data[:self._save_pos],
-                self._xy_data[:self._save_pos])),
-            dtype=self._npy_dtype)
-        _np.save(self._xy_fd, save_data)
+        if self._xy_tracking_enabled:
+            save_data = _np.array(  # horrible
+                list(zip(self._t_save_data[:self._save_pos],
+                         self._xy_save_data[:self._save_pos])),
+                dtype=self._npy_xy_dtype)
+            _np.save(self._xy_fd, save_data)
+        if self._z_tracking_enabled:
+            save_data = _np.array(  # horrible
+                list(zip(self._t_save_data[:self._save_pos],
+                         self._z_save_data[:self._save_pos],
+                         )),
+                dtype=_NPY_Z_DTYPE)
+            _np.save(self._z_fd, save_data)
         self._save_pos = 0
 
     # @pyqtSlot(float)
@@ -576,17 +601,17 @@ class Frontend(QFrame):
     @pyqtSlot(float, _np.ndarray, float, _np.ndarray)
     def get_data(self, t: float, img: _np.ndarray, z: float, xy_shifts: _np.ndarray):
         """Receive data from the stabilizer and graph it."""
-        # Ver si grabar
         if self._save_pos >= _SAVE_PERIOD and self._save_data:
             self._save_and_reset()
-        if self._graph_pos >= self._MAX_POINTS:  # roll
+
+        # Graphics
+        # Roll data
+        if self._graph_pos >= self._MAX_POINTS:
             self._t_data[0:-1] = self._t_data[1:]
             # self._I_data[0:-1] = self._I_data[1:]
             if self._z_tracking_enabled:
                 self._z_data[0:-1] = self._z_data[1:]
             if self._xy_tracking_enabled and xy_shifts.shape[0]:
-                # self._x_data[0:-1] = self._x_data[1:]
-                # self._y_data[0:-1] = self._y_data[1:]
                 self._xy_data[0:-1] = self._xy_data[1:]
             self._graph_pos -= 1
 
@@ -594,13 +619,13 @@ class Frontend(QFrame):
         self.img.setImage(img, autoLevels=self.lastimage is None)
         self.lastimage = img
         # self._I_data[self._graph_pos] = _np.average(img)
-        self._t_data[self._graph_pos] = t
+        self._t_save_data[self._save_pos] = self._t_data[self._graph_pos] = t
         t_data = self._t_data[: self._graph_pos + 1] - self._t0
         # self.avgIntCurve.setData(t_data, self._I_data[: self._graph_pos + 1])
 
         # manage tracking data
         if self._z_tracking_enabled:
-            self._z_data[self._graph_pos] = z
+            self._z_save_data[self._save_pos] = self._z_data[self._graph_pos] = z
             # update reports
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -621,13 +646,9 @@ class Frontend(QFrame):
                 print("Excepcion ploteando z:", e, (type(e)))
 
         if self._xy_tracking_enabled and xy_shifts.shape[0]:
-            # self._x_data[self._graph_pos] = xy_shifts[:, 0]
-            # self._y_data[self._graph_pos] = xy_shifts[:, 1]
-            self._xy_data[self._graph_pos] = xy_shifts
+            self._xy_save_data[self._save_pos]= self._xy_data[self._graph_pos] = xy_shifts
             t_data = _np.copy(t_data)  # pyqtgraph does not keep a cpoy
 
-            # x_data = self._x_data[: self._graph_pos + 1]
-            # y_data = self._y_data[: self._graph_pos + 1]
             x_data = self._xy_data[: self._graph_pos + 1, :, 0]
             y_data = self._xy_data[: self._graph_pos + 1, :, 1]
             with warnings.catch_warnings():
@@ -650,7 +671,8 @@ class Frontend(QFrame):
             self.ymeanCurve.setData(t_data, y_mean)
             self.xyDataItem.setData(x_mean, y_mean)
         self._graph_pos += 1
-        self._save_pos += 1
+        if self._save_data:
+            self._save_pos += 1
 
     def setup_gui(self):
         """Create and lay out all GUI objects."""

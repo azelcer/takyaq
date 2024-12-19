@@ -30,6 +30,24 @@ import logging as _lgn
 _lgr = _lgn.getLogger(__name__)
 
 
+def slicex(x, n):
+    if n == 0:
+        return x
+    if n > 0:
+        return x[n:]
+    if n < 0:
+        return x[:n]
+
+
+def nan_correlate(a, b):
+    if (not (len(a) == len(b))):
+        raise IOError("input must have same length")
+    L = len(a)
+    offsets = _np.arange(-L+1, L)
+    corrs = _np.array([_np.nansum(slicex(a, l) * slicex(b, -l)) for l in offsets])
+    return offsets, corrs
+
+
 class Frontend(QFrame):
     """PyQt Frontend for Takyaq.
 
@@ -96,58 +114,71 @@ class Frontend(QFrame):
                     n_batches += 1
             except EOFError:
                 print(f"Loaded {n_batches} of lenghts {[len(x) for x in data]}")
-            self._data = _np.concatenate(data)
-        print("cargamos", len(self._data), " puntos.")
-        print("El numero de ROIs es de", len(self._data[0]['xy']), " puntos.")
-        self.reset_graphs(len(self._data[0]['xy']))
+            self._data = _np.concatenate(data) if data else None
+        with open("/tmp/z_data.npy", 'rb') as fd:
+            data = []
+            n_batches = 0
+            try:
+                while True:
+                    data.append(_np.load(fd))
+                    n_batches += 1
+            except EOFError:
+                print(f"Loaded {n_batches} of lenghts {[len(x) for x in data]}")
+            self._z_data = _np.concatenate(data) if data else None
+        if self._data is not None:
+            print("cargamos", len(self._data), " puntos xy.")
+            print("El numero de ROIs es de", len(self._data[0]['xy']), " puntos.")
+            self.reset_graphs(len(self._data[0]['xy']))
         self.plot_data()
 
     def plot_data(self):
-        # Ver si grabar
-        z_data = self._data['z']
-        t_data = self._data['t'] - self._data['t'][0]
-        self.zstd_value.setText(f"{_np.nanstd(z_data):.2f}")
-        # update Graphs
-        self.zCurve.setData(t_data, z_data)
-        try:  # It is possible to have all NANs data
-            hist, bin_edges = _np.histogram(z_data, bins=30,
-                                            range=(_np.nanmin(z_data),
-                                                   _np.nanmax(z_data)))
-            self.zHistogram.setOpts(
-                x=_np.mean((bin_edges[:-1], bin_edges[1:],), axis=0),
-                height=hist,
-                width=bin_edges[1]-bin_edges[0]
+        if self._z_data is not None:
+            z_data = self._z_data['z']
+            z_t_data = self._z_data['t']# - self._z_data['t'][0]
+            self.zstd_value.setText(f"{_np.nanstd(z_data):.2f}")
+            # update Graphs
+            self.zCurve.setData(z_t_data, z_data)
+            try:  # It is possible to have all NANs data
+                hist, bin_edges = _np.histogram(z_data, bins=30,
+                                                range=(_np.nanmin(z_data),
+                                                       _np.nanmax(z_data)))
+                self.zHistogram.setOpts(
+                    x=_np.mean((bin_edges[:-1], bin_edges[1:],), axis=0),
+                    height=hist,
+                    width=bin_edges[1]-bin_edges[0]
+                    )
+            except Exception as e:
+                print("Excepcion ploteando z:", e, (type(e)))
+
+        if self._data is not None:
+            x_data = self._data['xy'][:, :, 0]
+            y_data = self._data['xy'][:, :, 1]
+            t_data = self._data['t']# - self._data['t'][0]
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                x_mean = _np.nanmean(x_data, axis=1)
+                y_mean = _np.nanmean(y_data, axis=1)
+                # update reports
+                self.xstd_value.setText(
+                    f"{_np.nanstd(x_mean):.2f} - {_np.nanmean(_np.nanstd(x_data, axis=0)):.2f}"
                 )
-        except Exception as e:
-            print("Excepcion ploteando z:", e, (type(e)))
-
-
-        x_data = self._data['xy'][:, :, 0]
-        y_data = self._data['xy'][:, :, 1]
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            x_mean = _np.nanmean(x_data, axis=1)
-            y_mean = _np.nanmean(y_data, axis=1)
-            # update reports
-            self.xstd_value.setText(
-                f"{_np.nanstd(x_mean):.2f} - {_np.nanmean(_np.nanstd(x_data, axis=0)):.2f}"
-            )
-            self.ystd_value.setText(
-                f"{_np.nanstd(y_mean):.2f} - {_np.nanmean(_np.nanstd(y_data, axis=0)):.2f}"
-            )
-        # # update Graphs
-        for i, p in enumerate(self._x_plots):
-            p.setData(t_data, x_data[:, i])
-        self.xmeanCurve.setData(t_data, x_mean)
-        for i, p in enumerate(self._y_plots):
-            p.setData(t_data, y_data[:, i])
-        self.ymeanCurve.setData(t_data, y_mean)
-        self.xyDataItem.setData(x_mean, y_mean)
-        xcorr_data = _np.correlate(x_mean, x_mean, mode='full')
-        ycorr_data = _np.correlate(y_mean, x_mean, mode='full')
-        t = _np.arange(len(xcorr_data)) * _np.mean(_np.diff(t_data))
-        self.xacplot.setData(t, xcorr_data)
-        self.yacplot.setData(t, ycorr_data)
+                self.ystd_value.setText(
+                    f"{_np.nanstd(y_mean):.2f} - {_np.nanmean(_np.nanstd(y_data, axis=0)):.2f}"
+                )
+            # # update Graphs
+            for i, p in enumerate(self._x_plots):
+                p.setData(t_data, x_data[:, i])
+                # print(t_data)
+            self.xmeanCurve.setData(t_data, x_mean)
+            for i, p in enumerate(self._y_plots):
+                p.setData(t_data, y_data[:, i])
+            self.ymeanCurve.setData(t_data, y_mean)
+            self.xyDataItem.setData(x_mean, y_mean)
+            x_off, x_corr = nan_correlate(x_mean, x_mean)
+            y_off, y_corr = nan_correlate(y_mean, y_mean)
+            dt = t_data[-1] - t_data[-2]
+            self.xacplot.setData(x_off* dt, x_corr)
+            self.yacplot.setData(y_off * dt, y_corr)
 
     def setup_gui(self):
         """Create and lay out all GUI objects."""
