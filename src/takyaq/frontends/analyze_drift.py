@@ -115,6 +115,8 @@ class Frontend(QFrame):
             except EOFError:
                 print(f"Loaded {n_batches} of lenghts {[len(x) for x in data]}")
             self._data = _np.concatenate(data) if data else None
+            if self._data is not None:
+                self._data['t'] -= self._data['t'][0]
         with open("/tmp/z_data.npy", 'rb') as fd:
             data = []
             n_batches = 0
@@ -125,6 +127,8 @@ class Frontend(QFrame):
             except EOFError:
                 print(f"Loaded {n_batches} of lenghts {[len(x) for x in data]}")
             self._z_data = _np.concatenate(data) if data else None
+            if self._z_data is not None:
+                self._z_data['t'] -= self._z_data['t'][0]
         if self._data is not None:
             print("cargamos", len(self._data), " puntos xy.")
             print("El numero de ROIs es de", len(self._data[0]['xy']), " puntos.")
