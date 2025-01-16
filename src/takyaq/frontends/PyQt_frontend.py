@@ -322,6 +322,7 @@ class Frontend(QFrame):
 
     def __init__(self, camera: _bc.BaseCamera, piezo: _bc.BasePiezo,
                  controller: _bc.BaseController, camera_info: _Optional[CameraInfo],
+                 stabilizer: Stabilizer,
                  *args, **kwargs):
         """Init Frontend."""
         super().__init__(*args, **kwargs)
@@ -337,11 +338,9 @@ class Frontend(QFrame):
         self.reset_data_buffers()
         self.reset_xy_data_buffers(len(self._roilist))
         self.reset_z_data_buffers()
-        self._est = Stabilizer(
-            self._camera, self._piezo, self._camera_info, controller, self._cbojt.cb
-        )
+        self._est = stabilizer
+        self._est.add_callback(self._cbojt.cb)
         self._t0 = _time.time()
-        self._est.start_loop()
         self._set_delay(True)
         self._config_window = ConfigWindow(self, controller)
         self._config_window.hide()
@@ -907,8 +906,7 @@ class Frontend(QFrame):
 
     def closeEvent(self, *args, **kwargs):
         """Shut down stabilizer on exit."""
-        super().closeEvent(*args, **kwargs)
-        self._est.stop_loop()
         if self._save_data:
             self._change_save(Qt.CheckState.Unchecked)
         self._config_window.close()
+        super().closeEvent(*args, **kwargs)

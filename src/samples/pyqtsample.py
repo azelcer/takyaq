@@ -19,6 +19,7 @@ Use:
 import logging as _lgn
 
 from takyaq.frontends.PyQt_frontend import Frontend
+from takyaq.stabilizer import Stabilizer
 from PyQt5.QtWidgets import QApplication
 
 from takyaq.controllers import PIDController
@@ -61,12 +62,13 @@ if __name__ == "__main__":
     else:
         app = QApplication.instance()
     app.setStyle('Windows')
-    gui = Frontend(camera, piezo, controller, camera_info)
-
-    gui.setWindowTitle("Takyaq with PyQt frontend")
-    gui.show()
-    gui.raise_()
-    gui.activateWindow()
-
-    app.exec_()
-    app.quit()
+    with Stabilizer(camera, piezo, camera_info, controller) as stb:
+        gui = Frontend(camera, piezo, controller, camera_info, stb)
+    
+        gui.setWindowTitle("Takyaq with PyQt frontend")
+        gui.show()
+        gui.raise_()
+        gui.activateWindow()
+    
+        app.exec_()
+        app.quit()

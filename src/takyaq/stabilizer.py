@@ -11,7 +11,7 @@ import threading as _th
 import logging as _lgn
 import time as _time
 import os as _os
-from typing import Callable as _Callable
+from typing import Callable as _Callable, List as _List
 from concurrent.futures import ProcessPoolExecutor as _PPE
 import warnings as _warnings
 from typing import Union as _Union
@@ -115,6 +115,8 @@ class Stabilizer(_th.Thread):
     running thread relying on the GIL (like setting a value) or in events.
     """
 
+    _cb = _List[_Callable[[PointInfo], None]]
+
     # Status flags
     _xy_tracking: bool = False
     _z_tracking: bool = False
@@ -195,19 +197,32 @@ class Stabilizer(_th.Thread):
         self._moveto_pos = _np.zeros((3,))
 
         self._rsp = corrector
-        self._cb = callback
+        self._cb = []
+        if callback:
+            self._cb.append(callback)
         # Avoid users from shooting themselves in the foot
         self._old_run = self.run
         self.run = self._donotcall
         self._old_start = self.start
         self.start = self._donotcall
 
+    def __enter__(self):
+        self.start_loop()
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+        
     def set_log_level(self, loglevel: int):
         """Set log level for module."""
         if loglevel < 0:
             _lgr.warning("Invalid log level asked: %s", loglevel)
         else:
             _lgr.setLevel(loglevel)
+
+    def add_callback(self, cb: _Callable[[PointInfo], None]):
+        """Add a callback report function."""
+        self._cb.append(cb)
 
     def set_min_period(self, period: float):
         """Set minimum period between position adjustments.
@@ -421,6 +436,9 @@ class Stabilizer(_th.Thread):
 
         Must be called from another thread to avoid deadlocks.
         """
+        if not self._stop_event.is_set():
+            _lgr.warning("Trying to stop already finished loop")
+            return False
         self._stop_event.set()
         self.join()
         self._executor.shutdown()
@@ -513,9 +531,9 @@ class Stabilizer(_th.Thread):
         if xy_shifts is None:
             xy_shifts = _np.empty((0,))
         rv = PointInfo(t, image, z_shift, xy_shifts)
-        if self._cb:
+        for cb in self._cb:
             try:
-                self._cb(rv)
+                cb(rv)
             except Exception as e:
                 _lgr.warning(
                     "Exception reporting to callback: %s(%s)", type(e), e
@@ -659,6 +677,7 @@ class Stabilizer(_th.Thread):
             DELAY = self._period
             z_shift = 0.0
             xy_shifts = None
+            # Check external events
             if self._calibrate_event.is_set():
                 _lgr.debug("Calibration event received")
                 self._pos[:] = self._piezo.get_position()
@@ -678,8 +697,8 @@ class Stabilizer(_th.Thread):
             if self._move_event.is_set():
                 self._piezo.set_position(*self._moveto_pos)
                 self._pos[:] = self._moveto_pos
-                print("movimos a ", self._pos)
                 self._move_event.clear()
+            # Tracking and stabilization starts here
             try:
                 image = self._camera.get_image()
                 t = _time.time()
@@ -696,6 +715,7 @@ class Stabilizer(_th.Thread):
                 )
                 _time.sleep(self._period)
                 continue
+            # Process start tracking commands
             if not self._xy_track_event.is_set():
                 _lgr.info("Setting xy initial positions")
                 self._pos[:] = self._piezo.get_position()
@@ -709,6 +729,7 @@ class Stabilizer(_th.Thread):
                 initial_z_position = self._locate_z_center(image)
                 self._z_roi_OK_event.set()
                 self._z_tracking = True
+            # Do actual work
             if self._z_tracking:
                 z_position = self._locate_z_center(image)
                 z_disp = z_position - initial_z_position
