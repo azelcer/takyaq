@@ -15,12 +15,18 @@ from typing import Callable as _Callable, List as _List
 from concurrent.futures import ProcessPoolExecutor as _PPE
 import warnings as _warnings
 from typing import Union as _Union
+from enum import Enum as _Enum
 from .info_types import ROI, PointInfo, CameraInfo
 from . import base_classes as _bc
 
 _lgn.basicConfig()
 _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
+
+
+class ReportReferenceFrame(_Enum):
+    ReferenceAbsolute = 0
+    ReferenceSoftware = 1
 
 
 def _gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
@@ -129,6 +135,7 @@ class Stabilizer(_th.Thread):
     _last_image: _np.ndarray = _np.empty((50, 50))
     _pos = _np.zeros((3,))  # current position in nm
     _period = 0.150  # minumum loop time in seconds
+    _reference_shift = _np.zeros((3,))
 
     def __init__(
         self,
@@ -211,8 +218,13 @@ class Stabilizer(_th.Thread):
         return self
         
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop_loop()
         return False
         
+    def shift_reference(self, dx: float, dy: float, dz: float):
+        """Shift the reference setpoint."""
+        self._reference_shift += _np.array((dx, dy, dz,))
+
     def set_log_level(self, loglevel: int):
         """Set log level for module."""
         if loglevel < 0:
@@ -436,7 +448,7 @@ class Stabilizer(_th.Thread):
 
         Must be called from another thread to avoid deadlocks.
         """
-        if not self._stop_event.is_set():
+        if self._stop_event.is_set():
             _lgr.warning("Trying to stop already finished loop")
             return False
         self._stop_event.set()
@@ -671,6 +683,9 @@ class Stabilizer(_th.Thread):
             self._piezo.init()
         initial_xy_positions = None
         initial_z_position = None
+        # Ver que hacer con esto
+        report_shifted = False
+        #####
         self._pos[:] = self._piezo.get_position()
         while not self._stop_event.is_set():
             lt = _time.monotonic()
@@ -735,10 +750,15 @@ class Stabilizer(_th.Thread):
                 z_disp = z_position - initial_z_position
                 # ang is measured counterclockwise from the X axis. We rotate *clockwise*
                 z_shift = (_np.sum(z_disp * self._rot_vec) * self._nmpp_z)
+                # TODO: handle Z shift
             if self._xy_tracking:
                 xy_positions = self._locate_xy_centers(image)
                 xy_shifts = xy_positions - initial_xy_positions
-            self._report(t, image, xy_shifts, z_shift)
+            to_report = None
+            if xy_shifts is not None:
+                to_report = _np.array(xy_shifts) if report_shifted else (xy_shifts + self._reference_shift[0:2])
+                xy_shifts += self._reference_shift[0:2]
+            self._report(t, image, to_report, z_shift)
             if self._z_stabilization or self._xy_stabilization:
                 if z_shift is _np.nan:
                     _lgr.warning("z shift is NAN")
