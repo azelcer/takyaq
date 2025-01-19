@@ -24,11 +24,6 @@ _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
 
 
-class ReportReferenceFrame(_Enum):
-    ReferenceAbsolute = 0
-    ReferenceSoftware = 1
-
-
 def _gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
     """Generate a 2D gaussian.
 
@@ -683,9 +678,6 @@ class Stabilizer(_th.Thread):
             self._piezo.init()
         initial_xy_positions = None
         initial_z_position = None
-        # Ver que hacer con esto
-        report_shifted = False
-        #####
         self._pos[:] = self._piezo.get_position()
         while not self._stop_event.is_set():
             lt = _time.monotonic()
@@ -754,11 +746,9 @@ class Stabilizer(_th.Thread):
             if self._xy_tracking:
                 xy_positions = self._locate_xy_centers(image)
                 xy_shifts = xy_positions - initial_xy_positions
-            to_report = None
+            self._report(t, image, xy_shifts, z_shift)
             if xy_shifts is not None:
-                to_report = _np.array(xy_shifts) if report_shifted else (xy_shifts + self._reference_shift[0:2])
-                xy_shifts += self._reference_shift[0:2]
-            self._report(t, image, to_report, z_shift)
+                xy_shifts = xy_shifts + self._reference_shift[0:2]
             if self._z_stabilization or self._xy_stabilization:
                 if z_shift is _np.nan:
                     _lgr.warning("z shift is NAN")
