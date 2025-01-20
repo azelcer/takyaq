@@ -189,7 +189,6 @@ class Stabilizer(_th.Thread):
         self._stop_event = _th.Event()
         self._stop_event.set()
 
-        # FIXME: ROI setting and tracking are coupled, and names are mixed up
         self._xy_track_event = _th.Event()
         self._xy_track_event.set()
         self._z_track_event = _th.Event()
@@ -211,11 +210,11 @@ class Stabilizer(_th.Thread):
     def __enter__(self):
         self.start_loop()
         return self
-        
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop_loop()
         return False
-        
+
     def shift_reference(self, dx: float, dy: float, dz: float):
         """Shift the reference setpoint."""
         self._reference_shift += _np.array((dx, dy, dz,))
@@ -292,37 +291,32 @@ class Stabilizer(_th.Thread):
         ------
         True if successful, False otherwise
         """
-        self._z_roi = _np.array(
-            [[roi.min_x, roi.max_x], [roi.min_y, roi.max_y]], dtype=_np.uint32
-        )
-        return True
-
-    def restore_z_lock(self, x, y, roi: ROI) -> bool:
-        """Restore a saved Z lock position and ROI.
-
-        Parameter
-        ---------
-        x, y: center of mass in the selected roi
-        roi: ROI
-            Z roi
-
-        Return
-        ------
-        True if successful, False otherwise
-        """
         # TODO: protect against negative numbers max(0, _.min_x), min(_.max_x, self.img.shape[1])
         self._z_roi = _np.array(
             [[roi.min_x, roi.max_x], [roi.min_y, roi.max_y]], dtype=_np.uint32
         )
-        self._initial_z_position = _np.array((x, y,))
         return True
+
+    def restore_z_lock(self, x: float, y: float, roi: ROI) -> bool:
+        """Restore a saved Z lock position and ROI.
+
+        Parameters
+        ----------
+        x, y: float
+            center of mass in the selected roi
+        roi: ROI
+            Z roi
+        """
+        self.set_z_roi(roi)
+        self._initial_z_position = _np.array((x, y,))
 
     def get_z_lock(self) -> _Tuple[float, float, ROI]:
         """Get Z lock position and ROI.
 
-        Return
+        Returns
         ------
-           x, y, ROI
+           Tuple[float, float, ROI]: (x coordinate of center, y coordinate of
+           center, RO)I
 
         Raises
         ------
@@ -667,7 +661,7 @@ class Stabilizer(_th.Thread):
         if self._z_roi is None:
             _lgr.warning("Trying to calibrate z without ROI")
             return False
-        if not self._z_roi_OK_event.is_set():
+        if not self._z_track_event.is_set():
             _lgr.warning("Trying to calibrate z without tracking")
             return False
         oldpos = _np.copy(self._pos)
@@ -782,7 +776,7 @@ class Stabilizer(_th.Thread):
                 z_disp = z_position - self._initial_z_position
                 # ang is measured counterclockwise from the X axis. We rotate *clockwise*
                 z_shift = (_np.sum(z_disp * self._rot_vec) * self._nmpp_z)
-                # TODO: handle Z shift
+                # TODO: handle Z reference shift
             if self._xy_tracking:
                 xy_positions = self._locate_xy_centers(image)
                 xy_shifts = xy_positions - initial_xy_positions

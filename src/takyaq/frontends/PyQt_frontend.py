@@ -50,6 +50,7 @@ _lgr.setLevel(_lgn.DEBUG)
 
 # default configuration filename
 _CONFIG_FILENAME = 'takyaq.ini'
+_Z_LOCK_FILENAME = "z_lock.cfg"
 
 _DEFAULT_CONFIG = {
         'display_points': 200,
@@ -159,14 +160,16 @@ def save_z_lock(x: float, y: float, roi: ROI):
         'min_y': roi.min_y,
         'max_y': roi.max_y,
         }
-    with open("z_lock.cfg", "wt") as configfile:
+    with open(_Z_LOCK_FILENAME, "wt") as configfile:
         config.write(configfile)
+        _lgr.info("Z lock data saved to %s", _Z_LOCK_FILENAME)
+
 
 def load_z_lock() -> _Tuple[float, float, ROI]:
     """Load z lock data from file."""
     config = _ConfigParser()
-    if not config.read("z_lock.cfg"):
-        _lgr.warning("No lock file")
+    if not config.read(_Z_LOCK_FILENAME):
+        _lgr.warning("Z lock file not found")
         raise FileNotFoundError
     z_data = config["Z lock"]
     x = z_data.getfloat('x')
