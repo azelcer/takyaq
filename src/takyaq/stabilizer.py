@@ -15,6 +15,7 @@ from typing import Callable as _Callable, List as _List
 from concurrent.futures import ProcessPoolExecutor as _PPE
 import warnings as _warnings
 from typing import Union as _Union
+from enum import Enum as _Enum
 from .info_types import ROI, PointInfo, CameraInfo
 from . import base_classes as _bc
 
@@ -129,6 +130,7 @@ class Stabilizer(_th.Thread):
     _last_image: _np.ndarray = _np.empty((50, 50))
     _pos = _np.zeros((3,))  # current position in nm
     _period = 0.150  # minumum loop time in seconds
+    _reference_shift = _np.zeros((3,))
 
     def __init__(
         self,
@@ -214,6 +216,10 @@ class Stabilizer(_th.Thread):
         self.stop_loop()
         return False
         
+    def shift_reference(self, dx: float, dy: float, dz: float):
+        """Shift the reference setpoint."""
+        self._reference_shift += _np.array((dx, dy, dz,))
+
     def set_log_level(self, loglevel: int):
         """Set log level for module."""
         if loglevel < 0:
@@ -745,10 +751,13 @@ class Stabilizer(_th.Thread):
                 z_disp = z_position - initial_z_position
                 # ang is measured counterclockwise from the X axis. We rotate *clockwise*
                 z_shift = (_np.sum(z_disp * self._rot_vec) * self._nmpp_z)
+                # TODO: handle Z shift
             if self._xy_tracking:
                 xy_positions = self._locate_xy_centers(image)
                 xy_shifts = xy_positions - initial_xy_positions
             self._report(t, image, xy_shifts, z_shift)
+            if xy_shifts is not None:
+                xy_shifts = xy_shifts + self._reference_shift[0:2]
             if self._z_stabilization or self._xy_stabilization:
                 if z_shift is _np.nan:
                     _lgr.warning("z shift is NAN")
