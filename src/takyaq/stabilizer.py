@@ -211,6 +211,7 @@ class Stabilizer(_th.Thread):
         return self
         
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop_loop()
         return False
         
     def set_log_level(self, loglevel: int):
@@ -436,7 +437,7 @@ class Stabilizer(_th.Thread):
 
         Must be called from another thread to avoid deadlocks.
         """
-        if not self._stop_event.is_set():
+        if self._stop_event.is_set():
             _lgr.warning("Trying to stop already finished loop")
             return False
         self._stop_event.set()
@@ -632,6 +633,8 @@ class Stabilizer(_th.Thread):
             return False
         oldpos = _np.copy(self._pos)
         rel_vec = _np.zeros((3,))
+        image = self._camera.get_image()
+        initial_z_position = self._locate_z_center(image)
         try:
             rel_vec[2] = -length / 2.0
             self._move_relative(*rel_vec)
@@ -639,8 +642,10 @@ class Stabilizer(_th.Thread):
             image = self._camera.get_image()
             for idx, s in enumerate(shifts):
                 image = self._camera.get_image()
-                roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
-                c = _np.array(_sp.ndimage.center_of_mass(roi))
+                # roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
+                # c = _np.array(_sp.ndimage.center_of_mass(roi))
+                z_position = self._locate_z_center(image)
+                c = z_position - initial_z_position
                 xy_data = (
                     None
                     if self._xy_rois is None
@@ -651,15 +656,20 @@ class Stabilizer(_th.Thread):
                 self._move_relative(*rel_vec)
                 _time.sleep(0.10)
             # TODO: better reporting
-            for x, y in zip(shifts, response):
-                print(f"{x}, {y}")
+            print("z, x, y")
+            for z, xy in zip(shifts, response):
+                print(f"{z}, {xy[0]}, {xy[1]}")
             vec, _ = _np.linalg.lstsq(
                 _np.vstack([shifts, _np.ones(points)]).T, response, rcond=None
             )[0]
-            print("slope = ", 1 / vec)
-            print("nmpp z = ", _np.sum(1.0 / vec**2) ** 0.5)
-            # watch out order
-            print("Angle(rad) = ", _np.arctan2(vec[1], vec[0]))
+            rot_angle = _np.arctan2(vec[1], vec[0])
+            print("Angle(rad) = ", rot_angle)
+            rot_vec = _np.array((_np.cos(rot_angle), _np.sin(rot_angle)))
+            disp = _np.sum(_np.array(response) * rot_vec, axis=1)
+            px_per_nm, _ = _np.linalg.lstsq(
+                _np.vstack([shifts, _np.ones(points)]).T, disp, rcond=None
+            )[0]
+            print("Z nanometer per pixel= ", 1. / px_per_nm)
         except Exception as e:
             _lgr.warning("Exception calibrating z: %s(%s)", type(e), e)
         self._pos[:] = oldpos

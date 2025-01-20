@@ -110,10 +110,7 @@ def save_config(config_data: dict, filename: str = _CONFIG_FILENAME):
 
 
 def load_config(filename: str = _CONFIG_FILENAME):
-    """Load config.
-
-    Raises not found
-    """
+    """Load config."""
     config = _ConfigParser()
     rv = dict(_DEFAULT_CONFIG)
     if not config.read(filename):
