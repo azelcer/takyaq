@@ -104,7 +104,7 @@ class MockCamera(BaseCamera):
         #         raise ValueError("error en camara")
         # self.f = False
         rv = _np.random.poisson(
-            16.5,
+            3,
             (
                 self.max_x,
                 self.max_y,

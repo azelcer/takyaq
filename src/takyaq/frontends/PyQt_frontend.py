@@ -19,7 +19,7 @@ import numpy as _np
 import time as _time
 import datetime as _datetime
 import pathlib as _pathlib
-from typing import Optional as _Optional, BinaryIO as _BinaryIO
+from typing import Optional as _Optional, BinaryIO as _BinaryIO, Tuple as _Tuple
 from configparser import ConfigParser as _ConfigParser
 import warnings
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject, Qt
@@ -146,11 +146,33 @@ def load_camera_info(filename: str = _CONFIG_FILENAME) -> CameraInfo:
     return CameraInfo(nm_ppx_xy, nm_ppx_z, angle)
 
 
-# Globals (should go into a configuration file)
-# _MAX_POINTS = 200
-# _SAVE_PERIOD = 100  # for now, must be <= _MAX_POINTS
-# _XY_ROI_SIZE = 60
-# _Z_ROI_SIZE = 100
+def save_z_lock(x: float, y: float, roi: ROI):
+    """Save z lock data to file."""
+    config = _ConfigParser()
+    config["Z lock"] = {
+        'x': x,
+        'y': y,
+    }
+    config['ROI'] = {
+        'min_x': roi.min_x,
+        'max_x': roi.max_x,
+        'min_y': roi.min_y,
+        'max_y': roi.max_y,
+        }
+    with open("z_lock.cfg", "wt") as configfile:
+        config.write(configfile)
+
+def load_z_lock() -> _Tuple[float, float, ROI]:
+    """Load z lock data from file."""
+    config = _ConfigParser()
+    if not config.read("z_lock.cfg"):
+        _lgr.warning("No lock file")
+        raise FileNotFoundError
+    z_data = config["Z lock"]
+    x = z_data.getfloat('x')
+    y = z_data.getfloat('y')
+    roi = ROI(*[config['ROI'].getfloat(k) for k in ('min_x', 'max_x', 'min_y', 'max_y')])
+    return x, y, roi
 
 
 class ConfigWindow(QFrame):
@@ -555,6 +577,31 @@ class Frontend(QFrame):
             _np.save(self._z_fd, save_data)
         self._save_pos = 0
 
+    @pyqtSlot(bool)
+    def _save_z_lock(self, clicked: bool):
+        """Save Z lock position to file."""
+        try:
+            x, y, roi = self._est.get_z_lock()
+            save_z_lock(x, y, roi)
+        except ValueError:
+            _lgr.warning("Can not save: Z has not been locked")
+
+    @pyqtSlot(bool)
+    def _load_z_lock(self, clicked: bool):
+        """Load Z lock position to file."""
+        try:
+            x, y, roi = load_z_lock()
+        except ValueError:
+            _lgr.warning("Can not save: Z has not been locked")
+        self._est.restore_z_lock(x, y, roi)
+
+        if not self._z_ROI:
+            self._add_z_ROI(False)
+        ROIsize = (roi.max_x - roi.min_x, roi.max_y - roi.min_y)
+        self._z_ROI.setSize(ROIsize, update=False)
+        self._z_ROI.setPos(roi.min_x, roi.min_y)
+
+
     @pyqtSlot(float, _np.ndarray, float, _np.ndarray)
     def get_data(self, t: float, img: _np.ndarray, z: float, xy_shifts: _np.ndarray):
         """Receive data from the stabilizer and graph it."""
@@ -736,9 +783,15 @@ class Frontend(QFrame):
         self.export_chkbx = QCheckBox("Save")
         self.export_chkbx.stateChanged.connect(self._change_save)
         self.clearDataButton = QPushButton("Clear")
+        self.saveZButton = QPushButton("Save Z")
+        self.loadZButton = QPushButton("Load Z")
         data_layout.addWidget(self.export_chkbx)
         data_layout.addWidget(self.clearDataButton)
+        data_layout.addWidget(self.saveZButton)
+        data_layout.addWidget(self.loadZButton)
         self.clearDataButton.clicked.connect(self.clear_data)
+        self.saveZButton.clicked.connect(self._save_z_lock)
+        self.loadZButton.clicked.connect(self._load_z_lock)
         datagb.setFlat(True)
 
         delay_layout = QHBoxLayout()
@@ -855,6 +908,10 @@ class Frontend(QFrame):
         else:
             self.toggle_options_button.setText("Show options window")
             self._config_window.hide()
+        try:
+            print(self._est.get_z_lock())
+        except Exception as e:
+            print(e, type(e))
 
     def closeEvent(self, *args, **kwargs):
         """Shut down stabilizer on exit."""

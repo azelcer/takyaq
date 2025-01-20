@@ -11,7 +11,7 @@ import threading as _th
 import logging as _lgn
 import time as _time
 import os as _os
-from typing import Callable as _Callable, List as _List
+from typing import Callable as _Callable, List as _List, Tuple as _Tuple
 from concurrent.futures import ProcessPoolExecutor as _PPE
 import warnings as _warnings
 from typing import Union as _Union
@@ -192,8 +192,8 @@ class Stabilizer(_th.Thread):
         # FIXME: ROI setting and tracking are coupled, and names are mixed up
         self._xy_track_event = _th.Event()
         self._xy_track_event.set()
-        self._z_roi_OK_event = _th.Event()
-        self._z_roi_OK_event.set()
+        self._z_track_event = _th.Event()
+        self._z_track_event.set()
         self._calibrate_event = _th.Event()  # Unset by default
         self._move_event = _th.Event()
         self._moveto_pos = _np.zeros((3,))
@@ -292,17 +292,46 @@ class Stabilizer(_th.Thread):
         ------
         True if successful, False otherwise
         """
-        if self._z_tracking:
-            _lgr.warning("Trying to change z ROI while tracking is active")
-            return False
+        self._z_roi = _np.array(
+            [[roi.min_x, roi.max_x], [roi.min_y, roi.max_y]], dtype=_np.uint32
+        )
+        return True
+
+    def restore_z_lock(self, x, y, roi: ROI) -> bool:
+        """Restore a saved Z lock position and ROI.
+
+        Parameter
+        ---------
+        x, y: center of mass in the selected roi
+        roi: ROI
+            Z roi
+
+        Return
+        ------
+        True if successful, False otherwise
+        """
         # TODO: protect against negative numbers max(0, _.min_x), min(_.max_x, self.img.shape[1])
         self._z_roi = _np.array(
             [[roi.min_x, roi.max_x], [roi.min_y, roi.max_y]], dtype=_np.uint32
         )
-        self._z_roi_OK_event.clear()
-        if self.is_alive():
-            self._z_roi_OK_event.wait()
+        self._initial_z_position = _np.array((x, y,))
         return True
+
+    def get_z_lock(self) -> _Tuple[float, float, ROI]:
+        """Get Z lock position and ROI.
+
+        Return
+        ------
+           x, y, ROI
+
+        Raises
+        ------
+            ValueError if lock not set
+        """
+        if self._z_roi is None or self._initial_z_position is None:
+            raise ValueError("z lock not set")
+        roi = ROI(*self._z_roi.flat)
+        return *self._initial_z_position, roi
 
     def enable_xy_tracking(self) -> bool:
         """Enable tracking of XY fiduciaries."""
@@ -355,7 +384,9 @@ class Stabilizer(_th.Thread):
         if self._z_roi is None:
             _lgr.warning("Trying to enable z tracking without ROI")
             return False
-        self._z_tracking = True
+        self._z_track_event.clear()
+        if self.is_alive():
+            self._z_track_event.wait()
         return True
 
     def disable_z_tracking(self) -> bool:
@@ -518,6 +549,8 @@ class Stabilizer(_th.Thread):
             _lgr.error("Trying to locate z position without a ROI")
             return _np.full((2,), _np.nan)
         roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
+        roi = _np.array(roi)
+        # roi[roi < 25] = 0
         return _np.array(_sp.ndimage.center_of_mass(roi))
 
     def _move_relative(self, dx: float, dy: float, dz: float):
@@ -639,8 +672,6 @@ class Stabilizer(_th.Thread):
             return False
         oldpos = _np.copy(self._pos)
         rel_vec = _np.zeros((3,))
-        image = self._camera.get_image()
-        initial_z_position = self._locate_z_center(image)
         try:
             rel_vec[2] = -length / 2.0
             self._move_relative(*rel_vec)
@@ -651,7 +682,7 @@ class Stabilizer(_th.Thread):
                 # roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
                 # c = _np.array(_sp.ndimage.center_of_mass(roi))
                 z_position = self._locate_z_center(image)
-                c = z_position - initial_z_position
+                c = z_position - self._initial_z_position
                 xy_data = (
                     None
                     if self._xy_rois is None
@@ -686,7 +717,7 @@ class Stabilizer(_th.Thread):
         if callable(getattr(self._piezo, 'init', None)):
             self._piezo.init()
         initial_xy_positions = None
-        initial_z_position = None
+        self._initial_z_position = None
         self._pos[:] = self._piezo.get_position()
         while not self._stop_event.is_set():
             lt = _time.monotonic()
@@ -739,16 +770,16 @@ class Stabilizer(_th.Thread):
                 initial_xy_positions = self._locate_xy_centers(image)
                 self._xy_track_event.set()
                 self._xy_tracking = True
-            if not self._z_roi_OK_event.is_set():
+            if not self._z_track_event.is_set():
                 self._pos[:] = self._piezo.get_position()
                 _lgr.info("Setting z initial positions")
-                initial_z_position = self._locate_z_center(image)
-                self._z_roi_OK_event.set()
+                self._initial_z_position = self._locate_z_center(image)
+                self._z_track_event.set()
                 self._z_tracking = True
             # Do actual work
             if self._z_tracking:
                 z_position = self._locate_z_center(image)
-                z_disp = z_position - initial_z_position
+                z_disp = z_position - self._initial_z_position
                 # ang is measured counterclockwise from the X axis. We rotate *clockwise*
                 z_shift = (_np.sum(z_disp * self._rot_vec) * self._nmpp_z)
                 # TODO: handle Z shift
