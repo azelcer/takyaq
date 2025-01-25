@@ -64,7 +64,6 @@ if __name__ == "__main__":
     app.setStyle('Windows')
     with Stabilizer(camera, piezo, camera_info, controller) as stb:
         gui = Frontend(camera, piezo, controller, camera_info, stb)
-
         gui.setWindowTitle("Takyaq with PyQt frontend")
         gui.show()
         gui.raise_()

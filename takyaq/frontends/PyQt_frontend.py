@@ -316,7 +316,7 @@ class Frontend(QFrame):
         self.reset_xy_data_buffers(len(self._roilist))
         self.reset_z_data_buffers()
         self._est = stabilizer
-        self._est.add_callback(self._cbojt.cb)
+        self._est.add_callbacks(self._cbojt.cb, None, None)
         self._t0 = _time.time()
         self._set_delay(True)
         self._config_window = ConfigWindow(self, controller)
@@ -469,7 +469,10 @@ class Frontend(QFrame):
                 _lgr.warning("We need Z tracking to init locking")
                 self.lockZBox.setCheckState(Qt.CheckState.Unchecked)
                 return
-            self._est.enable_z_stabilization()
+            if not self._est.enable_z_stabilization():
+                _lgr.warning("Could not start z stabilization")
+                self.lockZBox.setCheckState(Qt.CheckState.Unchecked)
+                return
             self._z_locking_enabled = True
 
     @pyqtSlot(int)
@@ -513,7 +516,10 @@ class Frontend(QFrame):
                 _lgr.warning("We need XY tracking to init locking")
                 self.lockXYBox.setCheckState(Qt.CheckState.Unchecked)
                 return
-            self._est.enable_xy_stabilization()
+            if not self._est.enable_xy_stabilization():
+                _lgr.warning("Could not start xy stabilization")
+                self.lockXYBox.setCheckState(Qt.CheckState.Unchecked)
+                return
             self._xy_locking_enabled = True
 
     @pyqtSlot(bool)
