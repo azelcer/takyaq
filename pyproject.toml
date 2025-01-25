@@ -13,9 +13,6 @@ scipy = "^1.13.1"
 [tool.poetry.group.dev.dependencies]
 spyder = "^5.5.5"
 
-#[tool.poetry.group.extras.dependencies]
-#numba = "^0.60.0"
-
 [tool.poetry.group.qt]
 optional = true
 

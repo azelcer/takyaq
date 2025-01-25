@@ -196,10 +196,10 @@ class ConfigWindow(QFrame):
         PI_gb.setLayout(PI_layout)
         self._KP_sp: list[QDoubleSpinBox] = []
         self._KI_sp: list[QDoubleSpinBox] = []
-        self._KD_sp: list[QDoubleSpinBox] = []
+        # self._KD_sp: list[QDoubleSpinBox] = []
         PI_layout.addWidget(QLabel('Kp'), 1, 0)
         PI_layout.addWidget(QLabel('Ki'), 2, 0)
-        PI_layout.addWidget(QLabel('Kd'), 3, 0)
+        # PI_layout.addWidget(QLabel('Kd'), 3, 0)
         for idx, coord in enumerate(['x', 'y', 'z']):
             PI_layout.addWidget(QLabel(coord), 0, 1+idx)
             kpsp = _create_spin(.75, 3, 0.005)
@@ -208,12 +208,12 @@ class ConfigWindow(QFrame):
             kisp = _create_spin(0, 3, 0.005)
             kisp.valueChanged.connect(self._PID_changed)
             self._KI_sp.append(kisp)
-            kdsp = _create_spin(0, 3, 0.005)
-            kdsp.valueChanged.connect(self._PID_changed)
-            self._KD_sp.append(kdsp)
+            # kdsp = _create_spin(0, 3, 0.005)
+            # kdsp.valueChanged.connect(self._PID_changed)
+            # self._KD_sp.append(kdsp)
             PI_layout.addWidget(kpsp, 1, 1+idx)
             PI_layout.addWidget(kisp, 2, 1+idx)
-            PI_layout.addWidget(kdsp, 3, 1+idx)
+            # PI_layout.addWidget(kdsp, 3, 1+idx)
         PI_gb.setFlat(True)
         layout.addWidget(PI_gb)
 
@@ -255,10 +255,10 @@ class ConfigWindow(QFrame):
     def _PID_changed(self, newvalue: float):
         Kp = [sp.value() for sp in self._KP_sp]
         Ki = [sp.value() for sp in self._KI_sp]
-        Kd = [sp.value() for sp in self._KD_sp]
+        # Kd = [sp.value() for sp in self._KD_sp]
         self._controller.set_Kp(Kp)
         self._controller.set_Ki(Ki)
-        self._controller.set_Kd(Kd)
+        # self._controller.set_Kd(Kd)
 
 
 class Frontend(QFrame):
@@ -594,16 +594,15 @@ class Frontend(QFrame):
         """Load Z lock position to file."""
         try:
             x, y, roi = load_z_lock()
-        except ValueError:
-            _lgr.warning("Can not save: Z has not been locked")
+        except FileNotFoundError:
+            _lgr.warning("Can not load: Z locked file not found")
+            return
         self._est.restore_z_lock(x, y, roi)
-
         if not self._z_ROI:
             self._add_z_ROI(False)
         ROIsize = (roi.max_x - roi.min_x, roi.max_y - roi.min_y)
         self._z_ROI.setSize(ROIsize, update=False)
         self._z_ROI.setPos(roi.min_x, roi.min_y)
-
 
     @pyqtSlot(float, _np.ndarray, float, _np.ndarray)
     def get_data(self, t: float, img: _np.ndarray, z: float, xy_shifts: _np.ndarray):
@@ -650,7 +649,7 @@ class Frontend(QFrame):
                     width=bin_edges[1]-bin_edges[0]
                     )
             except Exception as e:
-                print("Excepcion ploteando z:", e, (type(e)))
+                _lgr.warning("Exception %s plotting z: %s", type(e), e)
 
         if self._xy_tracking_enabled and xy_shifts.shape[0]:
             self._xy_save_data[self._save_pos] = self._xy_data[self._graph_pos] = xy_shifts
@@ -781,7 +780,6 @@ class Frontend(QFrame):
         # Data saving
         datagb = QGroupBox("Data")
         data_layout = QHBoxLayout()
-        # data_btn_layout = QVBoxLayout()
         datagb.setLayout(data_layout)
         self.export_chkbx = QCheckBox("Save")
         self.export_chkbx.stateChanged.connect(self._change_save)
@@ -816,12 +814,10 @@ class Frontend(QFrame):
 
         param_layout.addWidget(trackgb)
         param_layout.addWidget(lockgb)
-        # param_layout.addWidget(PI_gb)
         param_layout.addWidget(datagb)
 
         param_layout.addStretch()
 
-        # param_layout.addWidget(calibration_gb)
         param_layout.addLayout(delay_layout)
 
         # stats widget
@@ -842,7 +838,7 @@ class Frontend(QFrame):
         self.statWidget.setMinimumHeight(150)
         self.statWidget.setMinimumWidth(120)
 
-        # drift and signal inensity graphs
+        # drift and signal intensity graphs
         self.xyzGraph = _pg.GraphicsLayoutWidget()
         self.xyzGraph.setAntialiasing(True)
 
@@ -897,7 +893,7 @@ class Frontend(QFrame):
         grid.addWidget(self.paramWidget, 0, 1)
         grid.addWidget(self.statWidget, 0, 2)
         grid.addWidget(self.xyzGraph, 1, 0)
-        grid.addWidget(self.xyPoint, 1, 1, 1, 2)  # agrego 1,2 al final
+        grid.addWidget(self.xyPoint, 1, 1, 1, 2)
 
     def goto_position(self, x, y, z):
         """Move to a defined position."""
@@ -911,10 +907,6 @@ class Frontend(QFrame):
         else:
             self.toggle_options_button.setText("Show options window")
             self._config_window.hide()
-        try:
-            print(self._est.get_z_lock())
-        except Exception as e:
-            print(e, type(e))
 
     def closeEvent(self, *args, **kwargs):
         """Shut down stabilizer on exit."""
