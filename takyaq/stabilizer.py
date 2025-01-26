@@ -177,9 +177,13 @@ class Stabilizer(_th.Thread):
             )
         )
 
-        if not callable(getattr(piezo, "set_position", None)):
+        if not callable(getattr(piezo, "set_position_xy", None)):
             raise ValueError(
-                "The piezo object does not expose a 'set_position' method"
+                "The piezo object does not expose a 'set_position_xy' method"
+            )
+        if not callable(getattr(piezo, "set_position_z", None)):
+            raise ValueError(
+                "The piezo object does not expose a 'set_position_z' method"
             )
         if not callable(getattr(piezo, "get_position", None)):
             raise ValueError(
@@ -193,6 +197,10 @@ class Stabilizer(_th.Thread):
         self._xy_track_event.set()
         self._z_track_event = _th.Event()
         self._z_track_event.set()
+        # self._xy_lock_event = _th.Event()
+        # self._xy_lock_event.set()
+        # self._z_lock_event = _th.Event()
+        # self._z_lock_event.set()
         self._calibrate_event = _th.Event()  # Unset by default
         self._move_event = _th.Event()
         self._moveto_pos = _np.zeros((3,))
@@ -547,12 +555,16 @@ class Stabilizer(_th.Thread):
         # roi[roi < 25] = 0
         return _np.array(_sp.ndimage.center_of_mass(roi))
 
-    def _move_relative(self, dx: float, dy: float, dz: float):
-        """Perform a relative movement."""
+    def _move_relative_xy(self, dx: float, dy: float):
+        """Perform a relative movement in xy."""
         self._pos[0] += dx
         self._pos[1] += dy
+        self._piezo.set_position_xy(*self._pos[:2])
+
+    def _move_relative_z(self, dz: float):
+        """Perform a relative movement in Z."""
         self._pos[2] += dz
-        self._piezo.set_position(*self._pos)
+        self._piezo.set_position_z(self._pos[0])
 
     def _report(
         self,
@@ -759,13 +771,13 @@ class Stabilizer(_th.Thread):
             # Process start tracking commands
             if not self._xy_track_event.is_set():
                 _lgr.info("Setting xy initial positions")
-                self._pos[:] = self._piezo.get_position()
+                self._pos[:2] = self._piezo.get_position()[:2]
                 self._initialize_last_params()
                 initial_xy_positions = self._locate_xy_centers(image)
                 self._xy_track_event.set()
                 self._xy_tracking = True
             if not self._z_track_event.is_set():
-                self._pos[:] = self._piezo.get_position()
+                self._pos[2] = self._piezo.get_position()[2]
                 _lgr.info("Setting z initial positions")
                 self._initial_z_position = self._locate_z_center(image)
                 self._z_track_event.set()
@@ -798,7 +810,10 @@ class Stabilizer(_th.Thread):
                     z_resp = 0.0
                 if not self._xy_stabilization:
                     x_resp = y_resp = 0.0
-                self._move_relative(x_resp, y_resp, z_resp)
+                if self._z_stabilization:
+                    self._move_relative_z(z_resp)
+                if self._xy_stabilization:
+                    self._move_relative_xy(x_resp, y_resp)
             nt = _time.monotonic()
             delay = DELAY - (nt - lt)
             _time.sleep(max(delay, 0.001))  # be nice to other threads
