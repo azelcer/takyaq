@@ -130,10 +130,13 @@ class Stabilizer(_th.Thread):
     # ROIS from the user
     _xy_rois: _np.ndarray = None  # [ [min, max]_x, [min, max]_y] * n_rois
     _z_roi = None  # min/max x, min/max y
+
     _last_image: _np.ndarray = _np.empty((50, 50))
     _pos = _np.zeros((3,))  # current position in nm
     _period = 0.150  # minumum loop time in seconds
     _reference_shift = _np.zeros((3,))
+    _z_shift: _np.float64 = _np.nan
+    _xy_shifts: _np.ndarray = _np.full((1,2,), _np.nan)
 
     def __init__(
         self,
@@ -191,12 +194,14 @@ class Stabilizer(_th.Thread):
         self._stop_event = _th.Event()
         self._stop_event.set()
 
+        # Clearing these events requests an update
         self._xy_track_event = _th.Event()
         self._xy_track_event.set()
         self._z_track_event = _th.Event()
         self._z_track_event.set()
         self._calibrate_event = _th.Event()  # Unset by default
         self._move_event = _th.Event()
+        self._loop_end = _th.Event()  # Set each time a loop finishes
         self._moveto_pos = _np.zeros((3,))
 
         self._rsp = corrector
@@ -345,6 +350,20 @@ class Stabilizer(_th.Thread):
             raise ValueError("z lock not set")
         roi = ROI(*self._z_roi.flat)
         return *self._initial_z_position, roi
+
+    def get_current_displacement(self) -> _Tuple[float, float, float]:
+        """Returns current XYZ displacment from initial tracking.
+
+        Values are numpy.nan if tracking is not enabled for that axe.
+        """
+        if self._stop_event.is_set():
+            ...  # error
+            raise
+        self._loop_end.clear()
+        self._loop_end.wait()
+        xy = _np.nanmean(self._xy_shifts, axis=0)
+        z = self._z_shift
+        return tuple(_np.array([xy[0], xy[1], z]))
 
     def enable_xy_tracking(self) -> bool:
         """Enable tracking of XY fiduciaries."""
@@ -663,7 +682,8 @@ class Stabilizer(_th.Thread):
         if self._xy_rois is None:
             _lgr.warning("Trying to calibrate xy without ROIs")
             return False
-        if not self._xy_track_event.is_set():
+        if not self._xy_tracking:
+        # if not self._xy_track_event.is_set():
             _lgr.warning("Trying to calibrate xy without tracking")
             return False
         oldpos = _np.copy(self._pos)
@@ -724,7 +744,8 @@ class Stabilizer(_th.Thread):
         if self._z_roi is None:
             _lgr.warning("Trying to calibrate z without ROI")
             return False
-        if not self._z_track_event.is_set():
+        if not self._z_tracking:
+        # if not self._z_track_event.is_set():
             _lgr.warning("Trying to calibrate z without tracking")
             return False
         oldpos = _np.copy(self._pos)
@@ -839,10 +860,12 @@ class Stabilizer(_th.Thread):
                 z_disp = z_position - self._initial_z_position
                 # ang is measured counterclockwise from the X axis. We rotate *clockwise*
                 z_shift = (_np.sum(z_disp * self._rot_vec) * self._nmpp_z)
+                self._z_shift = z_shift
                 # TODO: handle Z reference shift
             if self._xy_tracking:
                 xy_positions = self._locate_xy_centers(image)
                 xy_shifts = xy_positions - initial_xy_positions
+                self._xy_shifts = xy_shifts
             self._report(t, image, xy_shifts, z_shift)
             if xy_shifts is not None:
                 xy_shifts = xy_shifts + self._reference_shift[0:2]
@@ -862,6 +885,7 @@ class Stabilizer(_th.Thread):
                 if not self._xy_stabilization:
                     x_resp = y_resp = 0.0
                 self._move_relative(x_resp, y_resp, z_resp)
+            self._loop_end.set()
             nt = _time.monotonic()
             delay = DELAY - (nt - lt)
             _time.sleep(max(delay, 0.001))  # be nice to other threads
