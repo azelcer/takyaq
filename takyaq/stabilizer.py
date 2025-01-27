@@ -4,14 +4,14 @@ Stabilizer
 
 XY and Z are managed independently.
 """
-
+from __future__ import annotations
 import numpy as _np
 import scipy as _sp
 import threading as _th
 import logging as _lgn
 import time as _time
 import os as _os
-from typing import Callable as _Callable, List as _List, Tuple as _Tuple
+from typing import Optional as _Optional, List as _List, Tuple as _Tuple
 from concurrent.futures import ProcessPoolExecutor as _PPE
 import warnings as _warnings
 from typing import Union as _Union
@@ -117,9 +117,9 @@ class Stabilizer(_th.Thread):
     running thread relying on the GIL (like setting a value) or in events.
     """
 
-    _report_cb = _List[report_callback_type | None]
-    _init_cb = _List[init_callback_type | None]
-    _end_cb = _List[end_callback_type | None]
+    _report_cb = _List[_Optional[report_callback_type]]
+    _init_cb = _List[_Optional[init_callback_type]]
+    _end_cb = _List[_Optional[end_callback_type]]
 
     # Status flags
     _xy_tracking: bool = False
@@ -234,9 +234,9 @@ class Stabilizer(_th.Thread):
         else:
             _lgr.setLevel(loglevel)
 
-    def add_callbacks(self, report_cb: report_callback_type | None,
-                      init_cb: init_callback_type | None,
-                      end_cb: end_callback_type | None,
+    def add_callbacks(self, report_cb: _Optional[report_callback_type | None],
+                      init_cb: _Optional[init_callback_type],
+                      end_cb: _Optional[end_callback_type],
                       ):
         """Add callbacks functions.
 
