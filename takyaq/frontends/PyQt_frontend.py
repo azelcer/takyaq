@@ -45,6 +45,7 @@ from ..stabilizer import Stabilizer, PointInfo, ROI, CameraInfo
 
 import takyaq.base_classes as _bc
 
+
 _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
 
@@ -115,7 +116,7 @@ def load_config(filename: str = _CONFIG_FILENAME):
     config = _ConfigParser()
     rv = dict(_DEFAULT_CONFIG)
     if not config.read(filename):
-        print("No config file: using defaults")
+        _lgr.info("No config file: using defaults")
         return rv
     if 'General' in config:
         gnrl = config['General']
@@ -613,8 +614,6 @@ class Frontend(QFrame):
     @pyqtSlot(float, _np.ndarray, float, _np.ndarray)
     def get_data(self, t: float, img: _np.ndarray, z: float, xy_shifts: _np.ndarray):
         """Receive data from the stabilizer and graph it."""
-        
-        print(self._stabilizer.get_current_displacement())
         if self._save_pos >= self._SAVE_PERIOD and self._save_data:
             self._save_and_reset()
 

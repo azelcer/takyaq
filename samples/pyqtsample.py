@@ -18,10 +18,9 @@ Use:
 """
 import logging as _lgn
 
+from PyQt5.QtWidgets import QApplication
 from takyaq.frontends.PyQt_frontend import Frontend
 from takyaq.stabilizer import Stabilizer
-from PyQt5.QtWidgets import QApplication
-
 from takyaq.controllers import PIController
 from takyaq.mocks import MockCamera, MockPiezo
 from takyaq.info_types import CameraInfo
