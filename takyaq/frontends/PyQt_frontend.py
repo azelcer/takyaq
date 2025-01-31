@@ -45,6 +45,7 @@ from ..stabilizer import Stabilizer, PointInfo, ROI, CameraInfo
 
 import takyaq.base_classes as _bc
 
+
 _lgr = _lgn.getLogger(__name__)
 _lgr.setLevel(_lgn.DEBUG)
 
@@ -315,8 +316,8 @@ class Frontend(QFrame):
         self.reset_data_buffers()
         self.reset_xy_data_buffers(len(self._roilist))
         self.reset_z_data_buffers()
-        self._est = stabilizer
-        self._est.add_callback(self._cbojt.cb)
+        self._stabilizer = stabilizer
+        self._stabilizer.add_callbacks(self._cbojt.cb, None, None)
         self._t0 = _time.time()
         self._set_delay(True)
         self._config_window = ConfigWindow(self, controller)
@@ -442,7 +443,7 @@ class Frontend(QFrame):
                 _lgr.warning("Z locking enabled: can not disable tracking")
                 self.trackZBox.setCheckState(Qt.CheckState.Checked)
                 return
-            self._est.set_z_tracking(False)
+            self._stabilizer.set_z_tracking(False)
             self._z_tracking_enabled = False
         else:
             if self._z_tracking_enabled:
@@ -451,25 +452,28 @@ class Frontend(QFrame):
                 _lgr.warning("We need a Z ROI to init tracking")
                 self.trackZBox.setCheckState(Qt.CheckState.Unchecked)
                 return
-            self._est.set_z_roi(ROI.from_pyqtgraph(self._z_ROI))
+            self._stabilizer.set_z_roi(ROI.from_pyqtgraph(self._z_ROI))
             self.reset_z_data_buffers()
             if not self._xy_tracking_enabled:
                 self.reset_data_buffers()
-            self._est.set_z_tracking(True)
+            self._stabilizer.set_z_tracking(True)
             self._z_tracking_enabled = True
 
     @pyqtSlot(int)
     def _change_z_lock(self, state: int):
         """Start stabilization of Z position."""
         if state == Qt.CheckState.Unchecked:
-            self._est.set_z_stabilization(False)
+            self._stabilizer.set_z_stabilization(False)
             self._z_locking_enabled = False
         else:
             if not self._z_tracking_enabled:
                 _lgr.warning("We need Z tracking to init locking")
                 self.lockZBox.setCheckState(Qt.CheckState.Unchecked)
                 return
-            self._est.enable_z_stabilization()
+            if not self._stabilizer.enable_z_stabilization():
+                _lgr.warning("Could not start z stabilization")
+                self.lockZBox.setCheckState(Qt.CheckState.Unchecked)
+                return
             self._z_locking_enabled = True
 
     @pyqtSlot(int)
@@ -480,7 +484,7 @@ class Frontend(QFrame):
                 _lgr.warning("XY locking enabled: can not disable tracking")
                 self.trackXYBox.setCheckState(Qt.CheckState.Checked)
                 return
-            self._est.set_xy_tracking(False)
+            self._stabilizer.set_xy_tracking(False)
             self._xy_tracking_enabled = False
         else:
             if not self._roilist:
@@ -498,22 +502,25 @@ class Frontend(QFrame):
             self.reset_xy_data_buffers(len(self._roilist))
             if not self._z_tracking_enabled:
                 self.reset_data_buffers()
-            self._est.set_xy_rois([ROI.from_pyqtgraph(roi) for roi in self._roilist])
-            self._est.set_xy_tracking(True)
+            self._stabilizer.set_xy_rois([ROI.from_pyqtgraph(roi) for roi in self._roilist])
+            self._stabilizer.set_xy_tracking(True)
             self._xy_tracking_enabled = True
 
     @pyqtSlot(int)
     def _change_xy_lock(self, state: int):
         """Start stabilization of XY position."""
         if state == Qt.CheckState.Unchecked:
-            self._est.set_xy_stabilization(False)
+            self._stabilizer.set_xy_stabilization(False)
             self._xy_locking_enabled = False
         else:
             if not self._xy_tracking_enabled:
                 _lgr.warning("We need XY tracking to init locking")
                 self.lockXYBox.setCheckState(Qt.CheckState.Unchecked)
                 return
-            self._est.enable_xy_stabilization()
+            if not self._stabilizer.enable_xy_stabilization():
+                _lgr.warning("Could not start xy stabilization")
+                self.lockXYBox.setCheckState(Qt.CheckState.Unchecked)
+                return
             self._xy_locking_enabled = True
 
     @pyqtSlot(bool)
@@ -521,19 +528,19 @@ class Frontend(QFrame):
         delay = float(self.delay_le.text())
         self._period = delay
         self._config['period'] = delay
-        self._est.set_min_period(delay)
+        self._stabilizer.set_min_period(delay)
 
     @pyqtSlot(bool)
     def _calibrate_x(self, clicked: bool):
-        self._est.calibrate('x')
+        self._stabilizer.calibrate('x')
 
     @pyqtSlot(bool)
     def _calibrate_y(self, clicked: bool):
-        self._est.calibrate('y')
+        self._stabilizer.calibrate('y')
 
     @pyqtSlot(bool)
     def _calibrate_z(self, clicked: bool):
-        self._est.calibrate('z')
+        self._stabilizer.calibrate('z')
 
     @pyqtSlot(int)
     def _change_save(self, check_status: int):
@@ -584,7 +591,7 @@ class Frontend(QFrame):
     def _save_z_lock(self, clicked: bool):
         """Save Z lock position to file."""
         try:
-            x, y, roi = self._est.get_z_lock()
+            x, y, roi = self._stabilizer.get_z_lock()
             save_z_lock(x, y, roi)
         except ValueError:
             _lgr.warning("Can not save: Z has not been locked")
@@ -597,7 +604,7 @@ class Frontend(QFrame):
         except FileNotFoundError:
             _lgr.warning("Can not load: Z locked file not found")
             return
-        self._est.restore_z_lock(x, y, roi)
+        self._stabilizer.restore_z_lock(x, y, roi)
         if not self._z_ROI:
             self._add_z_ROI(False)
         ROIsize = (roi.max_x - roi.min_x, roi.max_y - roi.min_y)
@@ -897,7 +904,7 @@ class Frontend(QFrame):
 
     def goto_position(self, x, y, z):
         """Move to a defined position."""
-        self._est.move(x, y, z)
+        self._stabilizer.move(x, y, z)
 
     @pyqtSlot(bool)
     def _toggle_options_window(self, checked: bool):
@@ -910,6 +917,7 @@ class Frontend(QFrame):
 
     def closeEvent(self, *args, **kwargs):
         """Shut down stabilizer on exit."""
+        _lgr.debug("Closing stabilization window")
         if self._save_data:
             self._change_save(Qt.CheckState.Unchecked)
         self._config_window.close()
