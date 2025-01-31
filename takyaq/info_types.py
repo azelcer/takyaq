@@ -7,7 +7,13 @@ clases 'utiles'
 
 import numpy as _np
 from dataclasses import dataclass as _dataclass
-from typing import Union as _Union, Tuple as _Tuple
+from typing import Union as _Union, Tuple as _Tuple, Callable as _Callable
+from enum import Enum as _Enum
+
+
+class StabilizationType(_Enum):
+    XY_stabilization = 0
+    Z_stabilization = 1
 
 
 @_dataclass
@@ -50,3 +56,8 @@ class CameraInfo:
     nm_ppx_xy: float
     nm_ppx_z: float
     angle: float
+
+
+report_callback_type = _Callable[[PointInfo], None]
+init_callback_type = _Callable[[StabilizationType], bool]
+end_callback_type = _Callable[[StabilizationType], None]
