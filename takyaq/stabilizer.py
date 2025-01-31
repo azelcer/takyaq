@@ -60,7 +60,7 @@ def _gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
 
 def _gaussian_fit(
     data: _np.ndarray, x_max: float, y_max: float, sigma: float
-) -> tuple[float, float, float]:
+) -> _Tuple[float, float, float]:
     """Fit a gaussian to an image.
 
     All data is in PIXEL units.
@@ -234,7 +234,7 @@ class Stabilizer(_th.Thread):
 
     def shift_reference(self, dx: float, dy: float, dz: float):
         """Shift the reference setpoint."""
-        self._reference_shift += _np.array((dx, dy, dz,))
+        self._reference_shift = _np.array((dx, dy, dz,))
 
     def set_log_level(self, loglevel: int):
         """Set log level for module."""
@@ -243,7 +243,7 @@ class Stabilizer(_th.Thread):
         else:
             _lgr.setLevel(loglevel)
 
-    def add_callbacks(self, report_cb: _Optional[report_callback_type | None],
+    def add_callbacks(self, report_cb: _Optional[report_callback_type],
                       init_cb: _Optional[init_callback_type],
                       end_cb: _Optional[end_callback_type],
                       ):
@@ -286,7 +286,7 @@ class Stabilizer(_th.Thread):
         self._period = period
         _lgr.debug("New period set: %s", period)
 
-    def set_xy_rois(self, rois: list[ROI]) -> bool:
+    def set_xy_rois(self, rois: _List[ROI]) -> bool:
         """Set ROIs for xy stabilization.
 
         Can not be used while XY tracking is active.
@@ -645,7 +645,7 @@ class Stabilizer(_th.Thread):
         """Perform a relative movement in xy."""
         self._pos[0] += dx
         self._pos[1] += dy
-	try:
+        try:
             self._piezo.set_position_xy(*self._pos[:2])
         except Exception as e:
             _lgr.error("Error %s (%s) moving the stage", type(e), e)
@@ -709,10 +709,10 @@ class Stabilizer(_th.Thread):
             _lgr.warning("Trying to calibrate xy without tracking")
             return False
         oldpos = _np.copy(self._pos)
-        rel_vec = _np.zeros((3,))
+        rel_vec = _np.zeros((2,))
         try:
             rel_vec[c_idx] = -length / 2.0
-            self._move_relative(*rel_vec)
+            self._move_relative_xy(*rel_vec)
             rel_vec[c_idx] = step
             image = self._camera.get_image()
             self._initialize_last_params()  # we made a LARGE shift
@@ -724,7 +724,7 @@ class Stabilizer(_th.Thread):
                 )
                 x = _np.nanmean(xy_shifts[:, c_idx])
                 response[idx] = x / self._nmpp_xy
-                self._move_relative(*rel_vec)
+                self._move_relative_xy(*rel_vec)
                 _time.sleep(0.10)
             # TODO: better reporting
             for x, y in zip(shifts, response):
@@ -772,11 +772,11 @@ class Stabilizer(_th.Thread):
             _lgr.warning("Trying to calibrate z without tracking")
             return False
         oldpos = _np.copy(self._pos)
-        rel_vec = _np.zeros((3,))
+        rel_mov = 0.0
         try:
-            rel_vec[2] = -length / 2.0
-            self._move_relative(*rel_vec)
-            rel_vec[2] = step
+            rel_mov = -length / 2.0
+            self._move_relative_z(rel_mov)
+            rel_mov = step
             image = self._camera.get_image()
             for idx, s in enumerate(shifts):
                 image = self._camera.get_image()
@@ -791,7 +791,7 @@ class Stabilizer(_th.Thread):
                 )
                 self._report(_time.time(), image, xy_data, _np.nan)
                 response[idx] = c
-                self._move_relative(*rel_vec)
+                self._move_relative_z(rel_mov)
                 _time.sleep(0.10)
             # TODO: better reporting
             print("z, x, y")
