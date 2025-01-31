@@ -15,8 +15,9 @@ from typing import Callable as _Callable, List as _List, Tuple as _Tuple
 from concurrent.futures import ProcessPoolExecutor as _PPE
 import warnings as _warnings
 from typing import Union as _Union
-from enum import Enum as _Enum
-from .info_types import ROI, PointInfo, CameraInfo
+from .info_types import (ROI, PointInfo, CameraInfo, StabilizationType,
+                         report_callback_type, init_callback_type,
+                         end_callback_type)
 from . import base_classes as _bc
 
 _lgn.basicConfig()
@@ -116,7 +117,9 @@ class Stabilizer(_th.Thread):
     running thread relying on the GIL (like setting a value) or in events.
     """
 
-    _cb = _List[_Callable[[PointInfo], None]]
+    _report_cb = _List[report_callback_type | None]
+    _init_cb = _List[init_callback_type | None]
+    _end_cb = _List[end_callback_type | None]
 
     # Status flags
     _xy_tracking: bool = False
@@ -138,7 +141,6 @@ class Stabilizer(_th.Thread):
         piezo: _bc.BasePiezo,
         camera_info: CameraInfo,
         corrector: _bc.BaseController,
-        callback: _Callable[[PointInfo], None] = None,
         *args,
         **kwargs,
     ):
@@ -206,9 +208,10 @@ class Stabilizer(_th.Thread):
         self._moveto_pos = _np.zeros((3,))
 
         self._rsp = corrector
-        self._cb = []
-        if callback:
-            self._cb.append(callback)
+        self._report_cb = []
+        self._init_cb = []
+        self._end_cb = []
+
         # Avoid users from shooting themselves in the foot
         self._old_run = self.run
         self.run = self._donotcall
@@ -234,9 +237,25 @@ class Stabilizer(_th.Thread):
         else:
             _lgr.setLevel(loglevel)
 
-    def add_callback(self, cb: _Callable[[PointInfo], None]):
-        """Add a callback report function."""
-        self._cb.append(cb)
+    def add_callbacks(self, report_cb: report_callback_type | None,
+                      init_cb: init_callback_type | None,
+                      end_cb: end_callback_type | None,
+                      ):
+        """Add callbacks functions.
+
+        report_cb: takyaq.info_types.report_callback_type | None
+            Function to be called to report a new stabilization cycle. This
+            function is called from an internal thread.
+        init_cb: takyaq.info_types.init_callback_type | None
+            Function to be called before starting the stabilization.
+        end_cb: takyaq.info_types.end_callback_type | None
+            Function to be called after stopping the stabilization.
+
+        Any parameter can be None. In this case that CB is not called
+        """
+        self._report_cb.append(report_cb)
+        self._init_cb.append(init_cb)
+        self._end_cb.append(end_cb)
 
     def set_min_period(self, period: float):
         """Set minimum period between position adjustments.
@@ -343,7 +362,7 @@ class Stabilizer(_th.Thread):
 
         self._xy_track_event.clear()
         self._xy_track_event.wait()
-        return True
+        return self._xy_tracking
 
     def disable_xy_tracking(self) -> bool:
         """Disable tracking of XY fiduciaries."""
@@ -359,10 +378,36 @@ class Stabilizer(_th.Thread):
             return self.enable_xy_tracking()
         return self.disable_xy_tracking()
 
+    def _report_end_stabilization(self, st_type: StabilizationType,
+                                  idx_end: int = None):
+        """Call the stabilization en callbacks up to idx.
+
+        Helper function.
+        """
+        for cb in self._end_cb[: idx_end]:
+            try:
+                if cb:
+                    cb(StabilizationType.XY_stabilization)
+            except Exception as e:
+                _lgr.warning("Error %s reporting stabilization end: %s", type(e), e)
+
     def enable_xy_stabilization(self) -> bool:
         """Enable stabilization on XY plane."""
         if not self._xy_tracking:
             _lgr.warning("Trying to enable xy stabilization without tracking")
+            return False
+        must_unroll = False
+        for idx, cb in enumerate(self._init_cb):
+            try:
+                if cb:
+                    if not cb(StabilizationType.XY_stabilization):
+                        must_unroll = True
+                        break
+            except Exception as e:
+                _lgr.warning("Error %s reporting stabilization end: %s", type(e), e)
+        if must_unroll:
+            self._report_end_stabilization(StabilizationType.XY_stabilization,
+                                           idx + 1)
             return False
         self._rsp.reset_xy(len(self._xy_rois))
         self._xy_stabilization = True
@@ -371,8 +416,10 @@ class Stabilizer(_th.Thread):
     def disable_xy_stabilization(self) -> bool:
         """Disable stabilization on XY plane."""
         if not self._xy_stabilization:
-            _lgr.warning("Trying to disable xy feedback but is not active")
+            # _lgr.warning("Trying to disable xy feedback but is not active")
+            return False
         self._xy_stabilization = False
+        self._report_end_stabilization(StabilizationType.XY_stabilization)
         return True
 
     def set_xy_stabilization(self, enabled: bool) -> bool:
@@ -410,6 +457,19 @@ class Stabilizer(_th.Thread):
         if not self._z_tracking:
             _lgr.warning("Trying to enable z stabilization without tracking")
             return False
+        must_unroll = False
+        for idx, cb in enumerate(self._init_cb):
+            try:
+                if cb:
+                    if not cb(StabilizationType.Z_stabilization):
+                        must_unroll = True
+                        break
+            except Exception as e:
+                _lgr.warning("Error %s reporting stabilization end: %s", type(e), e)
+        if must_unroll:
+            self._report_end_stabilization(StabilizationType.Z_stabilization,
+                                           idx + 1)
+            return False
         self._rsp.reset_z()
         self._z_stabilization = True
         return True
@@ -417,7 +477,9 @@ class Stabilizer(_th.Thread):
     def disable_z_stabilization(self) -> bool:
         """Disable stabilization of Z position."""
         if not self._z_stabilization:
-            _lgr.warning("Trying to disable z feedback but is not active")
+            # _lgr.warning("Trying to disable z feedback but is not active")
+            return False
+        self._report_end_stabilization(StabilizationType.Z_stabilization)
         self._z_stabilization = False
         return True
 
@@ -577,9 +639,10 @@ class Stabilizer(_th.Thread):
         if xy_shifts is None:
             xy_shifts = _np.empty((0,))
         rv = PointInfo(t, image, z_shift, xy_shifts)
-        for cb in self._cb:
+        for cb in self._report_cb:
             try:
-                cb(rv)
+                if cb:
+                    cb(rv)
             except Exception as e:
                 _lgr.warning(
                     "Exception reporting to callback: %s(%s)", type(e), e
