@@ -11,7 +11,7 @@ import threading as _th
 import logging as _lgn
 import time as _time
 import os as _os
-from typing import Callable as _Callable, List as _List, Tuple as _Tuple
+from typing import Optional as _Optional, List as _List, Tuple as _Tuple
 from concurrent.futures import ProcessPoolExecutor as _PPE
 import warnings as _warnings
 from typing import Union as _Union
@@ -511,7 +511,7 @@ class Stabilizer(_th.Thread):
             _lgr.warning("Invalid calibration direction: %s", direction)
             return False
 
-        # no `match` yet (we support python 3.9), so do a dirty trick
+        # no `match` yet (we support python 3.7), so do a dirty trick
         self._calib_idx = {"x": 0, "y": 1, "z": 2}[direction]
         self._calibrate_event.set()
         return True
