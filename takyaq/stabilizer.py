@@ -117,9 +117,9 @@ class Stabilizer(_th.Thread):
     running thread relying on the GIL (like setting a value) or in events.
     """
 
-    _report_cb = _List[report_callback_type | None]
-    _init_cb = _List[init_callback_type | None]
-    _end_cb = _List[end_callback_type | None]
+    _report_cb = _List[_Optional[report_callback_type]]
+    _init_cb = _List[_Optional[init_callback_type]]
+    _end_cb = _List[_Optional[end_callback_type]]
 
     # Status flags
     _xy_tracking: bool = False
@@ -130,10 +130,14 @@ class Stabilizer(_th.Thread):
     # ROIS from the user
     _xy_rois: _np.ndarray = None  # [ [min, max]_x, [min, max]_y] * n_rois
     _z_roi = None  # min/max x, min/max y
+
     _last_image: _np.ndarray = _np.empty((50, 50))
     _pos = _np.zeros((3,))  # current position in nm
     _period = 0.150  # minumum loop time in seconds
     _reference_shift = _np.zeros((3,))
+    _z_shift: _np.float64 = _np.nan
+    _xy_shifts: _np.ndarray = _np.full((1, 2, ), _np.nan)
+    _running_thread: _th.Thread = None
 
     def __init__(
         self,
@@ -195,6 +199,7 @@ class Stabilizer(_th.Thread):
         self._stop_event = _th.Event()
         self._stop_event.set()
 
+        # Clearing these events requests an update
         self._xy_track_event = _th.Event()
         self._xy_track_event.set()
         self._z_track_event = _th.Event()
@@ -211,6 +216,7 @@ class Stabilizer(_th.Thread):
         self._report_cb = []
         self._init_cb = []
         self._end_cb = []
+        self._last_params = {}
 
         # Avoid users from shooting themselves in the foot
         self._old_run = self.run
@@ -237,9 +243,9 @@ class Stabilizer(_th.Thread):
         else:
             _lgr.setLevel(loglevel)
 
-    def add_callbacks(self, report_cb: report_callback_type | None,
-                      init_cb: init_callback_type | None,
-                      end_cb: end_callback_type | None,
+    def add_callbacks(self, report_cb: _Optional[report_callback_type | None],
+                      init_cb: _Optional[init_callback_type],
+                      end_cb: _Optional[end_callback_type],
                       ):
         """Add callbacks functions.
 
@@ -352,7 +358,23 @@ class Stabilizer(_th.Thread):
         if self._z_roi is None or self._initial_z_position is None:
             raise ValueError("z lock not set")
         roi = ROI(*self._z_roi.flat)
-        return *self._initial_z_position, roi
+        return (*self._initial_z_position, roi)
+
+    def get_current_displacement(self) -> _Tuple[float, float, float]:
+        """Returns last XYZ displacement from initial tracking.
+
+        Values are numpy.nan if tracking was never enabled for that axis.
+
+        Should NOT be called from any direct or indirect report handler.
+        """
+        if self._stop_event.is_set():
+            raise RuntimeError("Stabilization thread is not running")
+        # This guard is here to implement a better handling in future versions
+        if _th.current_thread() == self._running_thread:
+            raise RuntimeError("Can not be called from callbacks")
+        xy = _np.nanmean(self._xy_shifts, axis=0)
+        z = self._z_shift
+        return tuple(_np.array([xy[0], xy[1], z]))
 
     def enable_xy_tracking(self) -> bool:
         """Enable tracking of XY fiduciaries."""
@@ -492,6 +514,7 @@ class Stabilizer(_th.Thread):
         # no `match` yet (we support python 3.9), so do a dirty trick
         self._calib_idx = {"x": 0, "y": 1, "z": 2}[direction]
         self._calibrate_event.set()
+        return True
 
     def set_z_stabilization(self, enabled: bool) -> bool:
         """Set stabilization of Z position ON or OFF."""
@@ -509,6 +532,7 @@ class Stabilizer(_th.Thread):
             return False
         self._moveto_pos[:] = x, y, z
         self._move_event.set()
+        return True
 
     def start_loop(self) -> bool:
         """Start tracking and stabilization loop."""
@@ -621,12 +645,18 @@ class Stabilizer(_th.Thread):
         """Perform a relative movement in xy."""
         self._pos[0] += dx
         self._pos[1] += dy
-        self._piezo.set_position_xy(*self._pos[:2])
+	try:
+            self._piezo.set_position_xy(*self._pos[:2])
+        except Exception as e:
+            _lgr.error("Error %s (%s) moving the stage", type(e), e)
 
     def _move_relative_z(self, dz: float):
         """Perform a relative movement in Z."""
         self._pos[2] += dz
-        self._piezo.set_position_z(self._pos[0])
+        try:
+            self._piezo.set_position_z(self._pos[2])
+        except Exception as e:
+            _lgr.error("Error %s (%s) moving the stage", type(e), e)
 
     def _report(
         self,
@@ -675,7 +705,7 @@ class Stabilizer(_th.Thread):
         if self._xy_rois is None:
             _lgr.warning("Trying to calibrate xy without ROIs")
             return False
-        if not self._xy_track_event.is_set():
+        if not self._xy_tracking:
             _lgr.warning("Trying to calibrate xy without tracking")
             return False
         oldpos = _np.copy(self._pos)
@@ -706,7 +736,8 @@ class Stabilizer(_th.Thread):
         except Exception as e:
             _lgr.warning("Exception calibrating x: %s(%s)", type(e), e)
         self._pos[:] = oldpos
-        self._piezo.set_position(*self._pos)
+        self._piezo.set_position_xy(*self._pos[:2])
+        return True
 
     def _calibrate_z(
         self, length: float, initial_xy_positions: _np.ndarray, points: int = 20
@@ -736,7 +767,8 @@ class Stabilizer(_th.Thread):
         if self._z_roi is None:
             _lgr.warning("Trying to calibrate z without ROI")
             return False
-        if not self._z_track_event.is_set():
+        if not self._z_tracking:
+        # if not self._z_track_event.is_set():
             _lgr.warning("Trying to calibrate z without tracking")
             return False
         oldpos = _np.copy(self._pos)
@@ -779,12 +811,14 @@ class Stabilizer(_th.Thread):
         except Exception as e:
             _lgr.warning("Exception calibrating z: %s(%s)", type(e), e)
         self._pos[:] = oldpos
-        self._piezo.set_position(*self._pos)
+        self._piezo.set_position_z(self._pos[2])
+        return True
 
     def run(self):
         """Run main stabilization loop."""
         if callable(getattr(self._piezo, 'init', None)):
             self._piezo.init()
+        self._running_thread = _th.current_thread()
         initial_xy_positions = None
         self._initial_z_position = None
         self._pos[:] = self._piezo.get_position()
@@ -796,22 +830,26 @@ class Stabilizer(_th.Thread):
             # Check external events
             if self._calibrate_event.is_set():
                 _lgr.debug("Calibration event received")
-                self._pos[:] = self._piezo.get_position()
-                if self._calib_idx >= 0 and self._calib_idx < 2:
-                    if self._xy_tracking:
-                        self._calibrate_xy(100.0, initial_xy_positions)
+                try:
+                    self._pos[:] = self._piezo.get_position()
+                    if self._calib_idx >= 0 and self._calib_idx < 2:
+                        if self._xy_tracking:
+                            self._calibrate_xy(100.0, initial_xy_positions)
+                        else:
+                            _lgr.warning("can not calibrate XY without tracking")
+                    elif self._calib_idx == 2:
+                        if self._z_tracking:
+                            self._calibrate_z(100.0, initial_xy_positions)
+                        else:
+                            _lgr.warning("can not calibrate Z without tracking")
                     else:
-                        _lgr.warning("can not calibrate XY without tracking")
-                elif self._calib_idx == 2:
-                    if self._z_tracking:
-                        self._calibrate_z(100.0, initial_xy_positions)
-                    else:
-                        _lgr.warning("can not calibrate Z without tracking")
-                else:
-                    _lgr.warning("Invalid calibration direction detected")
+                        _lgr.warning("Invalid calibration direction detected")
+                except:
+                    _lgr.error("Excepci{on durante la calibraci{on")
                 self._calibrate_event.clear()
             if self._move_event.is_set():
-                self._piezo.set_position(*self._moveto_pos)
+                self._piezo.set_position_xy(*self._moveto_pos[:2])
+                self._piezo.set_position_z(self._moveto_pos[2])
                 self._pos[:] = self._moveto_pos
                 self._move_event.clear()
             # Tracking and stabilization starts here
@@ -850,11 +888,13 @@ class Stabilizer(_th.Thread):
                 z_position = self._locate_z_center(image)
                 z_disp = z_position - self._initial_z_position
                 # ang is measured counterclockwise from the X axis. We rotate *clockwise*
-                z_shift = (_np.sum(z_disp * self._rot_vec) * self._nmpp_z)
+                z_shift = _np.sum(z_disp * self._rot_vec) * self._nmpp_z
+                self._z_shift = z_shift
                 # TODO: handle Z reference shift
             if self._xy_tracking:
                 xy_positions = self._locate_xy_centers(image)
                 xy_shifts = xy_positions - initial_xy_positions
+                self._xy_shifts = xy_shifts
             self._report(t, image, xy_shifts, z_shift)
             if xy_shifts is not None:
                 xy_shifts = xy_shifts + self._reference_shift[0:2]

@@ -116,7 +116,7 @@ def load_config(filename: str = _CONFIG_FILENAME):
     config = _ConfigParser()
     rv = dict(_DEFAULT_CONFIG)
     if not config.read(filename):
-        print("No config file: using defaults")
+        _lgr.info("No config file: using defaults")
         return rv
     if 'General' in config:
         gnrl = config['General']
