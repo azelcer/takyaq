@@ -9,8 +9,8 @@ The module implement objects that react after a fiduciary localization event
 
 import numpy as _np
 import logging as _lgn
-from typing import Optional as _Optional, Union as _Union
-from collections.abc import Collection as _Collection
+from typing import Optional as _Optional, Union as _Union, Tuple as _Tuple
+
 
 _lgn.basicConfig()
 _lgr = _lgn.getLogger(__name__)
@@ -48,8 +48,8 @@ class PIController:
     _cum = _np.zeros((3,))
     _last_times = _np.zeros((3,))
 
-    def __init__(self, Kp: _Union[float, _Collection[float]] = 1.,
-                 Ki: _Union[float, _Collection[float]] = 1.):
+    def __init__(self, Kp: _Union[float, _Tuple[float]] = 1.,
+                 Ki: _Union[float, _Tuple[float]] = 1.):
         """Proportional controller.
 
         Parameters
@@ -62,10 +62,10 @@ class PIController:
         self.set_Kp(Kp)
         self.set_Ki(Ki)
 
-    def set_Kp(self, Kp: _Union[float, _Collection[float]]):
+    def set_Kp(self, Kp: _Union[float, _Tuple[float]]):
         self._Kp[:] = _np.array(Kp)
 
-    def set_Ki(self, Ki: _Union[float, _Collection[float]]):
+    def set_Ki(self, Ki: _Union[float, _Tuple[float]]):
         self._Ki[:] = _np.array(Ki)
 
     def reset_xy(self, n_xy_rois: int):
@@ -116,8 +116,8 @@ class SmoothedPIController:
     _cum = _np.zeros((3,))
     _last_times = _np.zeros((3,))
 
-    def __init__(self, Kp: _Union[float, _Collection[float]] = 1.,
-                 Ki: _Union[float, _Collection[float]] = 1.):
+    def __init__(self, Kp: _Union[float, _Tuple[float]] = 1.,
+                 Ki: _Union[float, _Tuple[float]] = 1.):
         """Proportional controller.
 
         Parameters
@@ -134,13 +134,13 @@ class SmoothedPIController:
         self._z_boxed = boxaverage(5)
         
 
-    def set_Kp(self, Kp: _Union[float, _Collection[float]]):
+    def set_Kp(self, Kp: _Union[float, _Tuple[float]]):
         self._Kp[:] = _np.array(Kp)
 
-    def set_Ki(self, Ki: _Union[float, _Collection[float]]):
+    def set_Ki(self, Ki: _Union[float, _Tuple[float]]):
         self._Ki[:] = _np.array(Ki)
 
-    def set_Kd(self, Kd: _Union[float, _Collection[float]]):
+    def set_Kd(self, Kd: _Union[float, _Tuple[float]]):
         ...
 
     def reset_xy(self, n_xy_rois: int):
@@ -202,9 +202,9 @@ class PIDController:
     _last_times = _np.zeros((3,))
     _n_deriv_points = 10
 
-    def __init__(self, Kp: _Union[float, _Collection[float]] = 1.,
-                 Ki: _Union[float, _Collection[float]] = 1.,
-                 Kd: _Union[float, _Collection[float]] = 1.,
+    def __init__(self, Kp: _Union[float, _Tuple[float]] = 1.,
+                 Ki: _Union[float, _Tuple[float]] = 1.,
+                 Kd: _Union[float, _Tuple[float]] = 1.,
                  deriv_points: int = 10):
         self.set_Kp(Kp)
         self.set_Ki(Ki)
@@ -212,13 +212,13 @@ class PIDController:
         self._n_deriv_points = deriv_points
         self._last_deriv = _np.full((deriv_points, 3,), _np.nan)
 
-    def set_Kp(self, Kp: _Union[float, _Collection[float]]):
+    def set_Kp(self, Kp: _Union[float, _Tuple[float]]):
         self._Kp[:] = _np.array(Kp)
 
-    def set_Ki(self, Ki: _Union[float, _Collection[float]]):
+    def set_Ki(self, Ki: _Union[float, _Tuple[float]]):
         self._Ki[:] = _np.array(Ki)
 
-    def set_Kd(self, Kd: _Union[float, _Collection[float]]):
+    def set_Kd(self, Kd: _Union[float, _Tuple[float]]):
         self._Kd[:] = _np.array(Kd)
 
     def reset_xy(self, n_xy_rois: int):
@@ -286,16 +286,16 @@ class PIController2:
     next_val = 0
     _last_times = _np.zeros((3,))
 
-    def __init__(self, Kp: _Union[float, _Collection[float]] = 1.,
-                 Ki: _Union[float, _Collection[float]] = 1.,
+    def __init__(self, Kp: _Union[float, _Tuple[float]] = 1.,
+                 Ki: _Union[float, _Tuple[float]] = 1.,
                  ):
         self.set_Kp(Kp)
         self.set_Ki(Ki)
 
-    def set_Kp(self, Kp: _Union[float, _Collection[float]]):
+    def set_Kp(self, Kp: _Union[float, _Tuple[float]]):
         self._Kp[:] = _np.array(Kp)
 
-    def set_Ki(self, Ki: _Union[float, _Collection[float]]):
+    def set_Ki(self, Ki: _Union[float, _Tuple[float]]):
         self._Ki[:] = _np.array(Ki)
 
     def reset_xy(self, n_xy_rois: int):
