@@ -54,7 +54,7 @@ _CONFIG_FILENAME = 'takyaq.ini'
 _Z_LOCK_FILENAME = "z_lock.cfg"
 
 _DEFAULT_CONFIG = {
-        'display_points': 200,
+        'display_points': 400,
         'save_buffer_length': 500,
         'period': 0.05,
         'XY ROIS': {
@@ -94,8 +94,8 @@ def save_config(config_data: dict, filename: str = _CONFIG_FILENAME):
     """
     config = _ConfigParser()
     config["General"] = {
-        'display_points': config_data.get('display_points', 200),
-        'save_buffer_length': config_data.get('save_buffer_length', 200),
+        'display_points': config_data.get('display_points', 400),
+        'save_buffer_length': config_data.get('save_buffer_length', 400),
         'period': config_data.get('period', 0.100),
     }
     XY_dict = config_data.get('XY ROIS', {})
