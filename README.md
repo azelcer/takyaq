@@ -48,7 +48,6 @@ Takyaq uses a number of open source projects to work properly:
 - [NumPy] - For efficient scientific computing
 - [SciPy] - For data fitting
 
-It can also profit of [Numba] for extra speed.
 
 ## How to use
 ### Module
@@ -114,7 +113,7 @@ piezo.close()
 
 
 ```
-Making a context manager is simple and very convenient.
+Making a context manager is recommended (it is simple and very convenient).
 
 ### PyQt frontend
 The provided PyQt frontend is a fully functional example of how to use the stabilization module. For most purposes, you can use it _as is_. You must provide:
@@ -133,10 +132,10 @@ Once you run the program, perform the following steps:
  - If you have provided calibration values, you can also check the _XY_ lock checkbox to stabilize the position.
 
 Calibration:
- - You need to have created the ROIs of the calibration you want to perform (XY or Z).
- - Be sure to have started tracking (but not locking).
+ - You must select the ROIs for the calibration you want to perform (XY or Z).
+ - Be sure to have started tracking (locking is not neccesary).
  - Open the options window and press the Desired "Calibrate" button. The calibration data will be logged to screen. A nicer report will be implemented on the near future.
- - You might want to repeat and average the calibrations
+ - You might want to repeat and average many calibrations.
 
 ### Camera and piezo orientation
   Depending on the assembly, the camera X-Y axis can be switched, or one of them flipped. Correct this in the `camera` wrapper 
