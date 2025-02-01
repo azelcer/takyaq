@@ -427,6 +427,7 @@ class Stabilizer(_th.Thread):
                         break
             except Exception as e:
                 _lgr.warning("Error %s reporting stabilization end: %s", type(e), e)
+                must_unroll = True
         if must_unroll:
             self._report_end_stabilization(StabilizationType.XY_stabilization,
                                            idx + 1)
@@ -488,7 +489,9 @@ class Stabilizer(_th.Thread):
                         break
             except Exception as e:
                 _lgr.warning("Error %s reporting stabilization end: %s", type(e), e)
+                must_unroll = True
         if must_unroll:
+            _lgr.warning("UNROLLING Z")
             self._report_end_stabilization(StabilizationType.Z_stabilization,
                                            idx + 1)
             return False
