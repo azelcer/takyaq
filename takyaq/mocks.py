@@ -177,7 +177,7 @@ class MockPiezo(BasePiezo):
         return tuple(self._pos)
 
     def set_position_xy(self, x: float, y: float):
-        npos = _np.array((x, y, 0,), dtype=float)
+        npos = _np.array((x, y, self._pos[2],), dtype=float)
         if self._camera:
             self._camera.shift(
                 *(npos - self._pos)
@@ -186,7 +186,7 @@ class MockPiezo(BasePiezo):
         return
 
     def set_position_z(self, z: float):
-        npos = _np.array((0, 0, z,), dtype=float)
+        npos = _np.array((self._pos[0], self._pos[1], z,), dtype=float)
         if self._camera:
             self._camera.shift(
                 *(npos - self._pos)
