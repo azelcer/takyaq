@@ -237,9 +237,10 @@ class ConfigWindow(QFrame):
         mv_layout = QGridLayout()
         movement_gb.setLayout(mv_layout)
         self._mv_sp: list[QDoubleSpinBox] = []
-        for idx, coord in enumerate(['x', 'y', 'z']):
+        for idx, (coord, v0) in enumerate(zip(['x', 'y', 'z'],
+                                              parent._piezo.get_position())):
             mv_layout.addWidget(QLabel(coord), 0, idx)
-            pos_spin = _create_spin(0, 3, 0.01, 0., 20.)
+            pos_spin = _create_spin(v0, 3, 0.01, 0., 20.)
             mv_layout.addWidget(pos_spin, 1, idx)
             self._mv_sp.append(pos_spin)
         self._mv_btn = QPushButton('Move')
@@ -904,7 +905,7 @@ class Frontend(QFrame):
 
     def goto_position(self, x, y, z):
         """Move to a defined position."""
-        self._stabilizer.move(x, y, z)
+        self._stabilizer.move(x * 1E3, y * 1E3, z * 1E3)
 
     @pyqtSlot(bool)
     def _toggle_options_window(self, checked: bool):
