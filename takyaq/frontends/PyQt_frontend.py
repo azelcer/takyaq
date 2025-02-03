@@ -239,7 +239,7 @@ class ConfigWindow(QFrame):
         self._mv_sp: list[QDoubleSpinBox] = []
         for idx, (coord, v0) in enumerate(zip(['x', 'y', 'z'],
                                               parent._piezo.get_position())):
-            mv_layout.addWidget(QLabel(coord), 0, idx)
+            mv_layout.addWidget(QLabel(coord + '/µm'), 0, idx)
             pos_spin = _create_spin(v0, 3, 0.01, 0., 20.)
             mv_layout.addWidget(pos_spin, 1, idx)
             self._mv_sp.append(pos_spin)
