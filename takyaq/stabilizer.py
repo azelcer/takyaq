@@ -158,9 +158,6 @@ class Stabilizer(_th.Thread):
             Holds information about camera and (x,y) and z marks relation
         corrector:
             object that provides a response
-        callback: Callable
-            Callable to report measured shifts. Will receive a `PointInfo`
-            object as the only parameter
         """
         super().__init__(*args, **kwargs)
 
