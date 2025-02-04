@@ -107,6 +107,14 @@ def _gaussian_fit(
     return popt[1:4]
 
 
+def _check_max_displacement(disp: float, max_value: float, axis_name: str) -> float:
+    if abs(disp) > max_value:
+        _lgr.warning("%s movement of %.2f exceeded max displacement",
+                     axis_name, disp)
+        return 0.0
+    return disp
+
+
 class Stabilizer(_th.Thread):
     """Wraps a stabilization thread.
 
@@ -145,6 +153,7 @@ class Stabilizer(_th.Thread):
         piezo: _bc.BasePiezo,
         camera_info: CameraInfo,
         corrector: _bc.BaseController,
+        max_displacement: _Union[float, _Tuple[float]] = 200.,
         *args,
         **kwargs,
     ):
@@ -223,6 +232,8 @@ class Stabilizer(_th.Thread):
         self.run = self._donotcall
         self._old_start = self.start
         self.start = self._donotcall
+        self._max_displacement = _np.zeros((3,))
+        self.set_max_displacement(max_displacement)
 
     def __enter__(self):
         self.start_loop()
@@ -231,6 +242,10 @@ class Stabilizer(_th.Thread):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop_loop()
         return False
+
+    def set_max_displacement(self, threshold: _Union[float, _Tuple[float]]):
+        """Set the threshold above which no movement is performed."""
+        self._max_displacement[:] = _np.array(threshold)
 
     def shift_reference(self, dx: float, dy: float, dz: float):
         """Shift the reference setpoint."""
@@ -914,8 +929,13 @@ class Stabilizer(_th.Thread):
                     x_resp = y_resp = z_resp = 0.0
                 if not self._z_stabilization:
                     z_resp = 0.0
+                else:
+                    z_resp = _check_max_displacement(z_resp, self._max_displacement[2], 'Z')
                 if not self._xy_stabilization:
                     x_resp = y_resp = 0.0
+                else:
+                    x_resp = _check_max_displacement(x_resp, self._max_displacement[0], 'X')
+                    y_resp = _check_max_displacement(y_resp, self._max_displacement[1], 'Y')
                 if self._z_stabilization:
                     self._move_relative_z(z_resp)
                 if self._xy_stabilization:
