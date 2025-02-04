@@ -56,6 +56,7 @@ _DEFAULT_CONFIG = {
         'display_points': 200,
         'save_buffer_length': 500,
         'period': 0.05,
+        'output_base_dir': _pathlib.Path.home() / "takyaq_data",
         'XY ROIS': {
             'size': 60,
         },
@@ -95,6 +96,7 @@ def save_config(config_data: dict, filename: str = _CONFIG_FILENAME):
     config["General"] = {
         'display_points': config_data.get('display_points', 200),
         'save_buffer_length': config_data.get('save_buffer_length', 200),
+        'output_base_dir': config_data.get('output_base_dir', _DEFAULT_CONFIG['output_base_dir']),
         'period': config_data.get('period', 0.100),
     }
     XY_dict = config_data.get('XY ROIS', {})
@@ -119,10 +121,11 @@ def load_config(filename: str = _CONFIG_FILENAME):
         return rv
     if 'General' in config:
         gnrl = config['General']
-        for k in ('display_points', 'save_buffer_length'):
-            rv[k] = gnrl.getint(k)
-        for k in ('period'):
-            rv[k] = gnrl.getfloat(k)
+        for k in ('display_points', 'save_buffer_length',):
+            rv[k] = gnrl.getint(k, fallback=rv[k])
+        for k in ('period',):
+            rv[k] = gnrl.getfloat(k, fallback=rv[k])
+        rv['output_base_dir'] = gnrl.get('output_base_dir', fallback=rv['output_base_dir'])
     if 'XY ROIS' in config:
         xy_cfg = config['XY ROIS']
         for k in ('size',):
@@ -553,6 +556,7 @@ class Frontend(QFrame):
                 self._save_data = False
         else:
             base_dir = _pathlib.Path.home() / "takyaq_data"
+            base_dir = self._config['output_base_dir']
             base_dir.mkdir(parents=True, exist_ok=True)
             date_str = _datetime.datetime.now().isoformat(
                 timespec='seconds').replace('-', '').replace(':', '-')
