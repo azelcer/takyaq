@@ -234,6 +234,7 @@ class Stabilizer(_th.Thread):
         self.start = self._donotcall
         self._max_displacement = _np.zeros((3,))
         self.set_max_displacement(max_displacement)
+        self._initial_z_position = None
 
     def __enter__(self):
         self.start_loop()
@@ -424,7 +425,7 @@ class Stabilizer(_th.Thread):
         for cb in self._end_cb[: idx_end]:
             try:
                 if cb:
-                    cb(StabilizationType.XY_stabilization)
+                    cb(st_type)
             except Exception as e:
                 _lgr.warning("Error %s reporting stabilization end: %s", type(e), e)
 
@@ -587,6 +588,7 @@ class Stabilizer(_th.Thread):
         self.join()
         self._executor.shutdown()
         _lgr.debug("Loop ended")
+        return True
 
     def _donotcall(self, *args, **kwargs):
         """Advice against running forbidden functions."""
@@ -862,8 +864,9 @@ class Stabilizer(_th.Thread):
                             _lgr.warning("can not calibrate Z without tracking")
                     else:
                         _lgr.warning("Invalid calibration direction detected")
-                except:
-                    _lgr.error("Excepci{on durante la calibraci{on")
+                except Exception as e:
+                    _lgr.error("An exception (%s) happened during calibration: %s",
+                               type(e), e)
                 self._calibrate_event.clear()
             if self._move_event.is_set():
                 self._piezo.set_position_xy(*self._moveto_pos[:2])
