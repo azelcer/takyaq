@@ -59,5 +59,5 @@ class CameraInfo:
 
 
 report_callback_type = _Callable[[PointInfo], None]
-init_callback_type = _Callable[StabilizationType, bool]
-end_callback_type = _Callable[StabilizationType, None]
+init_callback_type = _Callable[[StabilizationType], bool]
+end_callback_type = _Callable[[StabilizationType], None]

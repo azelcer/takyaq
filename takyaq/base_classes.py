@@ -9,7 +9,7 @@ honoured. Please note that Takyaq uses nm as units in all calls.
 """
 from abc import ABC as _ABC, abstractclassmethod as _abstractclassmethod
 import numpy as _np
-from typing import Optional as _Optional
+from typing import Optional as _Optional, Tuple as _Tuple
 
 
 class BaseCamera(_ABC):
@@ -25,26 +25,23 @@ class BasePiezo(_ABC):
     """Base class for piezoelectric stages."""
 
     @_abstractclassmethod
-    def get_position(self) -> tuple[float, float, float]:
+    def get_position(self) -> _Tuple[float, float, float]:
         """Return (x, y, z) position of the piezo in nanometers."""
         ...
 
     @_abstractclassmethod
-    def set_position(self, x: float, y: float, z: float):
-        """Move to position x, y, z, specified in nanometers."""
+    def set_position_xy(self, x: float, y: float):
+        """Move to xy position specified in nanometers."""
+        ...
+
+    @_abstractclassmethod
+    def set_position_z(self, z: float):
+        """Move to z position, specified in nanometers."""
         ...
 
     def init(self):
         """Perform initialization that must be performed on the running thread."""
         ...
-
-    # @_abstractclassmethod
-    # def set_xy_position(self, x: float, y: float):
-    #     ...
-
-    # @_abstractclassmethod
-    # def set_z_position(self, z: float):
-    #     ...
 
 
 class BaseController(_ABC):
@@ -62,7 +59,7 @@ class BaseController(_ABC):
 
     @_abstractclassmethod
     def response(self, t: float, xy_shifts: _Optional[_np.ndarray],
-                 z_shift: float) -> tuple[float, float, float]:
+                 z_shift: float) -> _Tuple[float, float, float]:
         """Process a mesaurement of the displacements.
 
         Any parameter can be NAN, so it must be properly handled

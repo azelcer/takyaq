@@ -43,8 +43,8 @@ def nan_correlate(a, b):
     if (not (len(a) == len(b))):
         raise IOError("input must have same length")
     L = len(a)
-    offsets = _np.arange(-L+1, L)
-    corrs = _np.array([_np.nansum(slicex(a, l) * slicex(b, -l)) for l in offsets])
+    offsets = _np.arange(0, L)
+    corrs = _np.array([_np.nansum(slicex(a, l) * slicex(b, -l))/(len(a)-l) for l in offsets])
     return offsets, corrs
 
 

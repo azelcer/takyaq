@@ -11,7 +11,7 @@ import threading as _th
 import logging as _lgn
 import time as _time
 import os as _os
-from typing import Callable as _Callable, List as _List, Tuple as _Tuple
+from typing import Optional as _Optional, List as _List, Tuple as _Tuple
 from concurrent.futures import ProcessPoolExecutor as _PPE
 import warnings as _warnings
 from typing import Union as _Union
@@ -60,7 +60,7 @@ def _gaussian2D(grid, amplitude, x0, y0, sigma, offset, ravel=True):
 
 def _gaussian_fit(
     data: _np.ndarray, x_max: float, y_max: float, sigma: float
-) -> tuple[float, float, float]:
+) -> _Tuple[float, float, float]:
     """Fit a gaussian to an image.
 
     All data is in PIXEL units.
@@ -107,6 +107,14 @@ def _gaussian_fit(
     return popt[1:4]
 
 
+def _check_max_displacement(disp: float, max_value: float, axis_name: str) -> float:
+    if abs(disp) > max_value:
+        _lgr.warning("%s movement of %.2f exceeded max displacement",
+                     axis_name, disp)
+        return 0.0
+    return disp
+
+
 class Stabilizer(_th.Thread):
     """Wraps a stabilization thread.
 
@@ -117,9 +125,9 @@ class Stabilizer(_th.Thread):
     running thread relying on the GIL (like setting a value) or in events.
     """
 
-    _report_cb = _List[report_callback_type | None]
-    _init_cb = _List[init_callback_type | None]
-    _end_cb = _List[end_callback_type | None]
+    _report_cb = _List[_Optional[report_callback_type]]
+    _init_cb = _List[_Optional[init_callback_type]]
+    _end_cb = _List[_Optional[end_callback_type]]
 
     # Status flags
     _xy_tracking: bool = False
@@ -130,10 +138,14 @@ class Stabilizer(_th.Thread):
     # ROIS from the user
     _xy_rois: _np.ndarray = None  # [ [min, max]_x, [min, max]_y] * n_rois
     _z_roi = None  # min/max x, min/max y
+
     _last_image: _np.ndarray = _np.empty((50, 50))
     _pos = _np.zeros((3,))  # current position in nm
     _period = 0.150  # minumum loop time in seconds
     _reference_shift = _np.zeros((3,))
+    _z_shift: _np.float64 = _np.nan
+    _xy_shifts: _np.ndarray = _np.full((1, 2, ), _np.nan)
+    _running_thread: _th.Thread = None
 
     def __init__(
         self,
@@ -141,6 +153,7 @@ class Stabilizer(_th.Thread):
         piezo: _bc.BasePiezo,
         camera_info: CameraInfo,
         corrector: _bc.BaseController,
+        max_displacement: _Union[float, _Tuple[float]] = 200.,
         *args,
         **kwargs,
     ):
@@ -176,9 +189,13 @@ class Stabilizer(_th.Thread):
             )
         )
 
-        if not callable(getattr(piezo, "set_position", None)):
+        if not callable(getattr(piezo, "set_position_xy", None)):
             raise ValueError(
-                "The piezo object does not expose a 'set_position' method"
+                "The piezo object does not expose a 'set_position_xy' method"
+            )
+        if not callable(getattr(piezo, "set_position_z", None)):
+            raise ValueError(
+                "The piezo object does not expose a 'set_position_z' method"
             )
         if not callable(getattr(piezo, "get_position", None)):
             raise ValueError(
@@ -188,10 +205,15 @@ class Stabilizer(_th.Thread):
         self._stop_event = _th.Event()
         self._stop_event.set()
 
+        # Clearing these events requests an update
         self._xy_track_event = _th.Event()
         self._xy_track_event.set()
         self._z_track_event = _th.Event()
         self._z_track_event.set()
+        # self._xy_lock_event = _th.Event()
+        # self._xy_lock_event.set()
+        # self._z_lock_event = _th.Event()
+        # self._z_lock_event.set()
         self._calibrate_event = _th.Event()  # Unset by default
         self._move_event = _th.Event()
         self._moveto_pos = _np.zeros((3,))
@@ -200,12 +222,16 @@ class Stabilizer(_th.Thread):
         self._report_cb = []
         self._init_cb = []
         self._end_cb = []
+        self._last_params = {}
 
         # Avoid users from shooting themselves in the foot
         self._old_run = self.run
         self.run = self._donotcall
         self._old_start = self.start
         self.start = self._donotcall
+        self._max_displacement = _np.zeros((3,))
+        self.set_max_displacement(max_displacement)
+        self._initial_z_position = None
 
     def __enter__(self):
         self.start_loop()
@@ -215,9 +241,13 @@ class Stabilizer(_th.Thread):
         self.stop_loop()
         return False
 
+    def set_max_displacement(self, threshold: _Union[float, _Tuple[float]]):
+        """Set the threshold above which no movement is performed."""
+        self._max_displacement[:] = _np.array(threshold)
+
     def shift_reference(self, dx: float, dy: float, dz: float):
         """Shift the reference setpoint."""
-        self._reference_shift += _np.array((dx, dy, dz,))
+        self._reference_shift = _np.array((dx, dy, dz,))
 
     def set_log_level(self, loglevel: int):
         """Set log level for module."""
@@ -226,9 +256,9 @@ class Stabilizer(_th.Thread):
         else:
             _lgr.setLevel(loglevel)
 
-    def add_callbacks(self, report_cb: report_callback_type | None,
-                      init_cb: init_callback_type | None,
-                      end_cb: end_callback_type | None,
+    def add_callbacks(self, report_cb: _Optional[report_callback_type],
+                      init_cb: _Optional[init_callback_type],
+                      end_cb: _Optional[end_callback_type],
                       ):
         """Add callbacks functions.
 
@@ -269,7 +299,7 @@ class Stabilizer(_th.Thread):
         self._period = period
         _lgr.debug("New period set: %s", period)
 
-    def set_xy_rois(self, rois: list[ROI]) -> bool:
+    def set_xy_rois(self, rois: _List[ROI]) -> bool:
         """Set ROIs for xy stabilization.
 
         Can not be used while XY tracking is active.
@@ -341,7 +371,23 @@ class Stabilizer(_th.Thread):
         if self._z_roi is None or self._initial_z_position is None:
             raise ValueError("z lock not set")
         roi = ROI(*self._z_roi.flat)
-        return *self._initial_z_position, roi
+        return (*self._initial_z_position, roi)
+
+    def get_current_displacement(self) -> _Tuple[float, float, float]:
+        """Returns last XYZ displacement from initial tracking.
+
+        Values are numpy.nan if tracking was never enabled for that axis.
+
+        Should NOT be called from any direct or indirect report handler.
+        """
+        if self._stop_event.is_set():
+            raise RuntimeError("Stabilization thread is not running")
+        # This guard is here to implement a better handling in future versions
+        if _th.current_thread() == self._running_thread:
+            raise RuntimeError("Can not be called from callbacks")
+        xy = _np.nanmean(self._xy_shifts, axis=0)
+        z = self._z_shift
+        return tuple(_np.array([xy[0], xy[1], z]))
 
     def enable_xy_tracking(self) -> bool:
         """Enable tracking of XY fiduciaries."""
@@ -376,7 +422,7 @@ class Stabilizer(_th.Thread):
         for cb in self._end_cb[: idx_end]:
             try:
                 if cb:
-                    cb(StabilizationType.XY_stabilization)
+                    cb(st_type)
             except Exception as e:
                 _lgr.warning("Error %s reporting stabilization end: %s", type(e), e)
 
@@ -394,6 +440,7 @@ class Stabilizer(_th.Thread):
                         break
             except Exception as e:
                 _lgr.warning("Error %s reporting stabilization end: %s", type(e), e)
+                must_unroll = True
         if must_unroll:
             self._report_end_stabilization(StabilizationType.XY_stabilization,
                                            idx + 1)
@@ -455,7 +502,9 @@ class Stabilizer(_th.Thread):
                         break
             except Exception as e:
                 _lgr.warning("Error %s reporting stabilization end: %s", type(e), e)
+                must_unroll = True
         if must_unroll:
+            _lgr.warning("UNROLLING Z")
             self._report_end_stabilization(StabilizationType.Z_stabilization,
                                            idx + 1)
             return False
@@ -478,9 +527,10 @@ class Stabilizer(_th.Thread):
             _lgr.warning("Invalid calibration direction: %s", direction)
             return False
 
-        # no `match` yet (we support python 3.9), so do a dirty trick
+        # no `match` yet (we support python 3.7), so do a dirty trick
         self._calib_idx = {"x": 0, "y": 1, "z": 2}[direction]
         self._calibrate_event.set()
+        return True
 
     def set_z_stabilization(self, enabled: bool) -> bool:
         """Set stabilization of Z position ON or OFF."""
@@ -498,6 +548,7 @@ class Stabilizer(_th.Thread):
             return False
         self._moveto_pos[:] = x, y, z
         self._move_event.set()
+        return True
 
     def start_loop(self) -> bool:
         """Start tracking and stabilization loop."""
@@ -534,6 +585,7 @@ class Stabilizer(_th.Thread):
         self.join()
         self._executor.shutdown()
         _lgr.debug("Loop ended")
+        return True
 
     def _donotcall(self, *args, **kwargs):
         """Advice against running forbidden functions."""
@@ -606,12 +658,22 @@ class Stabilizer(_th.Thread):
         # roi[roi < 25] = 0
         return _np.array(_sp.ndimage.center_of_mass(roi))
 
-    def _move_relative(self, dx: float, dy: float, dz: float):
-        """Perform a relative movement."""
+    def _move_relative_xy(self, dx: float, dy: float):
+        """Perform a relative movement in xy."""
         self._pos[0] += dx
         self._pos[1] += dy
+        try:
+            self._piezo.set_position_xy(*self._pos[:2])
+        except Exception as e:
+            _lgr.error("Error %s (%s) moving the stage", type(e), e)
+
+    def _move_relative_z(self, dz: float):
+        """Perform a relative movement in Z."""
         self._pos[2] += dz
-        self._piezo.set_position(*self._pos)
+        try:
+            self._piezo.set_position_z(self._pos[2])
+        except Exception as e:
+            _lgr.error("Error %s (%s) moving the stage", type(e), e)
 
     def _report(
         self,
@@ -660,14 +722,14 @@ class Stabilizer(_th.Thread):
         if self._xy_rois is None:
             _lgr.warning("Trying to calibrate xy without ROIs")
             return False
-        if not self._xy_track_event.is_set():
+        if not self._xy_tracking:
             _lgr.warning("Trying to calibrate xy without tracking")
             return False
         oldpos = _np.copy(self._pos)
-        rel_vec = _np.zeros((3,))
+        rel_vec = _np.zeros((2,))
         try:
             rel_vec[c_idx] = -length / 2.0
-            self._move_relative(*rel_vec)
+            self._move_relative_xy(*rel_vec)
             rel_vec[c_idx] = step
             image = self._camera.get_image()
             self._initialize_last_params()  # we made a LARGE shift
@@ -679,7 +741,7 @@ class Stabilizer(_th.Thread):
                 )
                 x = _np.nanmean(xy_shifts[:, c_idx])
                 response[idx] = x / self._nmpp_xy
-                self._move_relative(*rel_vec)
+                self._move_relative_xy(*rel_vec)
                 _time.sleep(0.10)
             # TODO: better reporting
             for x, y in zip(shifts, response):
@@ -691,7 +753,8 @@ class Stabilizer(_th.Thread):
         except Exception as e:
             _lgr.warning("Exception calibrating x: %s(%s)", type(e), e)
         self._pos[:] = oldpos
-        self._piezo.set_position(*self._pos)
+        self._piezo.set_position_xy(*self._pos[:2])
+        return True
 
     def _calibrate_z(
         self, length: float, initial_xy_positions: _np.ndarray, points: int = 20
@@ -721,15 +784,16 @@ class Stabilizer(_th.Thread):
         if self._z_roi is None:
             _lgr.warning("Trying to calibrate z without ROI")
             return False
-        if not self._z_track_event.is_set():
+        if not self._z_tracking:
+        # if not self._z_track_event.is_set():
             _lgr.warning("Trying to calibrate z without tracking")
             return False
         oldpos = _np.copy(self._pos)
-        rel_vec = _np.zeros((3,))
+        rel_mov = 0.0
         try:
-            rel_vec[2] = -length / 2.0
-            self._move_relative(*rel_vec)
-            rel_vec[2] = step
+            rel_mov = -length / 2.0
+            self._move_relative_z(rel_mov)
+            rel_mov = step
             image = self._camera.get_image()
             for idx, s in enumerate(shifts):
                 image = self._camera.get_image()
@@ -744,7 +808,7 @@ class Stabilizer(_th.Thread):
                 )
                 self._report(_time.time(), image, xy_data, _np.nan)
                 response[idx] = c
-                self._move_relative(*rel_vec)
+                self._move_relative_z(rel_mov)
                 _time.sleep(0.10)
             # TODO: better reporting
             print("z, x, y")
@@ -764,12 +828,14 @@ class Stabilizer(_th.Thread):
         except Exception as e:
             _lgr.warning("Exception calibrating z: %s(%s)", type(e), e)
         self._pos[:] = oldpos
-        self._piezo.set_position(*self._pos)
+        self._piezo.set_position_z(self._pos[2])
+        return True
 
     def run(self):
         """Run main stabilization loop."""
         if callable(getattr(self._piezo, 'init', None)):
             self._piezo.init()
+        self._running_thread = _th.current_thread()
         initial_xy_positions = None
         self._initial_z_position = None
         self._pos[:] = self._piezo.get_position()
@@ -781,22 +847,27 @@ class Stabilizer(_th.Thread):
             # Check external events
             if self._calibrate_event.is_set():
                 _lgr.debug("Calibration event received")
-                self._pos[:] = self._piezo.get_position()
-                if self._calib_idx >= 0 and self._calib_idx < 2:
-                    if self._xy_tracking:
-                        self._calibrate_xy(100.0, initial_xy_positions)
+                try:
+                    self._pos[:] = self._piezo.get_position()
+                    if self._calib_idx >= 0 and self._calib_idx < 2:
+                        if self._xy_tracking:
+                            self._calibrate_xy(100.0, initial_xy_positions)
+                        else:
+                            _lgr.warning("can not calibrate XY without tracking")
+                    elif self._calib_idx == 2:
+                        if self._z_tracking:
+                            self._calibrate_z(100.0, initial_xy_positions)
+                        else:
+                            _lgr.warning("can not calibrate Z without tracking")
                     else:
-                        _lgr.warning("can not calibrate XY without tracking")
-                elif self._calib_idx == 2:
-                    if self._z_tracking:
-                        self._calibrate_z(100.0, initial_xy_positions)
-                    else:
-                        _lgr.warning("can not calibrate Z without tracking")
-                else:
-                    _lgr.warning("Invalid calibration direction detected")
+                        _lgr.warning("Invalid calibration direction detected")
+                except Exception as e:
+                    _lgr.error("An exception (%s) happened during calibration: %s",
+                               type(e), e)
                 self._calibrate_event.clear()
             if self._move_event.is_set():
-                self._piezo.set_position(*self._moveto_pos)
+                self._piezo.set_position_xy(*self._moveto_pos[:2])
+                self._piezo.set_position_z(self._moveto_pos[2])
                 self._pos[:] = self._moveto_pos
                 self._move_event.clear()
             # Tracking and stabilization starts here
@@ -819,13 +890,13 @@ class Stabilizer(_th.Thread):
             # Process start tracking commands
             if not self._xy_track_event.is_set():
                 _lgr.info("Setting xy initial positions")
-                self._pos[:] = self._piezo.get_position()
+                self._pos[:2] = self._piezo.get_position()[:2]
                 self._initialize_last_params()
                 initial_xy_positions = self._locate_xy_centers(image)
                 self._xy_track_event.set()
                 self._xy_tracking = True
             if not self._z_track_event.is_set():
-                self._pos[:] = self._piezo.get_position()
+                self._pos[2] = self._piezo.get_position()[2]
                 _lgr.info("Setting z initial positions")
                 self._initial_z_position = self._locate_z_center(image)
                 self._z_track_event.set()
@@ -835,11 +906,13 @@ class Stabilizer(_th.Thread):
                 z_position = self._locate_z_center(image)
                 z_disp = z_position - self._initial_z_position
                 # ang is measured counterclockwise from the X axis. We rotate *clockwise*
-                z_shift = (_np.sum(z_disp * self._rot_vec) * self._nmpp_z)
+                z_shift = _np.sum(z_disp * self._rot_vec) * self._nmpp_z
+                self._z_shift = z_shift
                 # TODO: handle Z reference shift
             if self._xy_tracking:
                 xy_positions = self._locate_xy_centers(image)
                 xy_shifts = xy_positions - initial_xy_positions
+                self._xy_shifts = xy_shifts
             self._report(t, image, xy_shifts, z_shift)
             if xy_shifts is not None:
                 xy_shifts = xy_shifts + self._reference_shift[0:2]
@@ -856,9 +929,17 @@ class Stabilizer(_th.Thread):
                     x_resp = y_resp = z_resp = 0.0
                 if not self._z_stabilization:
                     z_resp = 0.0
+                else:
+                    z_resp = _check_max_displacement(z_resp, self._max_displacement[2], 'Z')
                 if not self._xy_stabilization:
                     x_resp = y_resp = 0.0
-                self._move_relative(x_resp, y_resp, z_resp)
+                else:
+                    x_resp = _check_max_displacement(x_resp, self._max_displacement[0], 'X')
+                    y_resp = _check_max_displacement(y_resp, self._max_displacement[1], 'Y')
+                if self._z_stabilization:
+                    self._move_relative_z(z_resp)
+                if self._xy_stabilization:
+                    self._move_relative_xy(x_resp, y_resp)
             nt = _time.monotonic()
             delay = DELAY - (nt - lt)
             _time.sleep(max(delay, 0.001))  # be nice to other threads
