@@ -193,3 +193,6 @@ class MockPiezo(BasePiezo):
             )
         self._pos = npos
         return
+
+    def get_limits(self):
+        return ((-10, 10),) * 3

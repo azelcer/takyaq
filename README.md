@@ -52,12 +52,14 @@ Takyaq uses a number of open source projects to work properly:
 ## How to use
 ### Module
 Interfaces needed:
- - A camera module, that exposes a function named `get_XXX` and returns a single color
+ - A camera object, that exposes a function named `get_XXX` and returns a single color
   image (a [NumPy] 2D array)
- - A piezo module, that must expose three functions
+ - A piezo object, that must expose three functions
    - One called `get_position` that returns a 3-element collection (list, array, tuple, etc) of x, y, and z positions *in nanometers*.
    - One called `set_position_xy` that takes 2 arguments: the x and y positions where the stage should move *in nanometers*.
    - One called `set_position_z` that takes 1 arguments: the z position where the stage should move *in nanometers*.
+
+The piezo object can optionally expose a method called `get_limits`, that takes no parameters and return a tuple of three pairs of floats, each pair representing the minimum and maximum values for X, Y and Z axes.
 
 If the Python interfaces to your camera and stage use different naming conventions or units, you should write some wrapping classes (see below).
 

@@ -240,10 +240,20 @@ class ConfigWindow(QFrame):
         mv_layout = QGridLayout()
         movement_gb.setLayout(mv_layout)
         self._mv_sp: list[QDoubleSpinBox] = []
-        for idx, (coord, v0) in enumerate(zip(['x', 'y', 'z'],
-                                              parent._piezo.get_position())):
-            mv_layout.addWidget(QLabel(coord + '/µm'), 0, idx)
-            pos_spin = _create_spin(v0, 3, 0.01, 0., 20.)
+        limits = ((0, 20),) * 3
+        if hasattr(parent._piezo, 'get_limits'):
+            try:
+                limits = parent._piezo.get_limits()
+            except Exception as e:
+                _lgr.warning("Error %s (%s) getting limits from piezo",
+                             type(e), e)
+        else:
+            _lgr.info("No piezo limits reported, using defaults")
+        for idx, (coord, v0, extents) in enumerate(zip(['x', 'y', 'z'],
+                                              parent._piezo.get_position(),
+                                              limits)):
+            mv_layout.addWidget(QLabel(coord + ' / µm'), 0, idx)
+            pos_spin = _create_spin(v0, 3, 0.01, extents[0], extents[1])
             mv_layout.addWidget(pos_spin, 1, idx)
             self._mv_sp.append(pos_spin)
         self._mv_btn = QPushButton('Move')
