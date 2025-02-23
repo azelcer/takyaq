@@ -705,8 +705,8 @@ class Frontend(QFrame):
     def setup_gui(self):
         """Create and lay out all GUI objects."""
         # GUI layout
-        grid = QGridLayout()
-        self.setLayout(grid)
+        main_layout = QVBoxLayout()
+        self.setLayout(main_layout)
 
         # image widget layout
         imageWidget = _pg.GraphicsLayoutWidget()
@@ -740,8 +740,8 @@ class Frontend(QFrame):
 
         # parameters widget
         self.paramWidget = QGroupBox("Tracking and feedback")
-        self.paramWidget.setMinimumHeight(200)
-        self.paramWidget.setMinimumWidth(270)
+        # self.paramWidget.setMinimumHeight(200)
+        # self.paramWidget.setMinimumWidth(270)
 
         # ROI buttons
         self.xyROIButton = QPushButton("xy ROI")
@@ -842,10 +842,12 @@ class Frontend(QFrame):
 
         param_layout.addLayout(delay_layout)
 
+        self.paramWidget.setMinimumSize(self.paramWidget.sizeHint())
+
         # stats widget
         self.statWidget = QGroupBox("Live statistics")
 
-        self.xstd_value = QLabel("-")
+        self.xstd_value = QLabel("00.00-00.00")
         self.ystd_value = QLabel("-")
         self.zstd_value = QLabel("-")
 
@@ -857,10 +859,11 @@ class Frontend(QFrame):
         stat_subgrid.addWidget(self.xstd_value, 0, 1)
         stat_subgrid.addWidget(self.ystd_value, 1, 1)
         stat_subgrid.addWidget(self.zstd_value, 2, 1)
-        self.statWidget.setMinimumHeight(150)
-        self.statWidget.setMinimumWidth(120)
 
-        # drift and signal intensity graphs
+        self.statWidget.setMinimumSize(self.statWidget.sizeHint())
+        self.xstd_value.setText("-")
+
+        # drift (and signal intensity) graphs
         self.xyzGraph = _pg.GraphicsLayoutWidget()
         self.xyzGraph.setAntialiasing(True)
 
@@ -911,11 +914,20 @@ class Frontend(QFrame):
         self.zPlot.addItem(self.zHistogram)
 
         # Lay everything in place
-        grid.addWidget(imageWidget, 0, 0)
-        grid.addWidget(self.paramWidget, 0, 1)
-        grid.addWidget(self.statWidget, 0, 2)
-        grid.addWidget(self.xyzGraph, 1, 0)
-        grid.addWidget(self.xyPoint, 1, 1, 1, 2)
+        top_layout = QHBoxLayout()
+        bottom_layout = QHBoxLayout()
+        top_layout.addWidget(imageWidget, stretch=2)
+        top_layout.addWidget(self.paramWidget, stretch=0)
+        top_layout.addWidget(self.statWidget, stretch=0)
+        bottom_layout.addWidget(self.xyzGraph)
+        bottom_layout.addWidget(self.xyPoint)
+        main_layout.addLayout(top_layout)
+        main_layout.addLayout(bottom_layout)
+        # main_layout.addWidget(imageWidget, 0, 0)
+        # main_layout.addWidget(self.paramWidget, 0, 1)
+        # main_layout.addWidget(self.statWidget, 0, 2)
+        # main_layout.addWidget(self.xyzGraph, 1, 0)
+        # main_layout.addWidget(self.xyPoint, 1, 1, 1, 2)
 
     def goto_position(self, x, y, z):
         """Move to a defined position."""
