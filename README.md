@@ -61,6 +61,8 @@ Interfaces needed:
 
 The piezo object can optionally expose a method called `get_limits`, that takes no parameters and return a tuple of three pairs of floats, each pair representing the minimum and maximum values for X, Y and Z axes.
 
+The camera object can optionally expose methods called `set_exposure` and `set_gain`. Both methods take a single float parameter. For `set_exposure`, this value is the desired exposure time in seconds. For `set_gain`, the parameter is a value between 0 and 10. For each of these methods implemented in the object, the corresponding control will be available to set the parameter from the frontend.
+
 If the Python interfaces to your camera and stage use different naming conventions or units, you should write some wrapping classes (see below).
 
 Calibration data needed:

@@ -72,6 +72,17 @@ _NPY_Z_DTYPE = _np.dtype([
     ])
 
 
+def _has_method(obj, method_name: str) -> bool:
+    """Check if an object implements a method, logging."""
+    if not hasattr(obj, method_name):
+        _lgr.info("Method %s not present")
+        return False
+    if not callable(getattr(obj, method_name)):
+        _lgr.error("Attribute %s is not a valid method", method_name)
+        return False
+    return True
+
+
 class QReader(QObject):
     """Helper class to send data from stabilizar to Qt GUI.
 
@@ -212,12 +223,8 @@ class ConfigWindow(QFrame):
             kisp = _create_spin(0, 3, 0.005)
             kisp.valueChanged.connect(self._PID_changed)
             self._KI_sp.append(kisp)
-            # kdsp = _create_spin(0, 3, 0.005)
-            # kdsp.valueChanged.connect(self._PID_changed)
-            # self._KD_sp.append(kdsp)
             PI_layout.addWidget(kpsp, 1, 1+idx)
             PI_layout.addWidget(kisp, 2, 1+idx)
-            # PI_layout.addWidget(kdsp, 3, 1+idx)
         PI_gb.setFlat(True)
         layout.addWidget(PI_gb)
 
@@ -349,8 +356,6 @@ class Frontend(QFrame):
     def clear_data(self, *args):
         """Clears all data buffers."""
         self.reset_data_buffers()
-        # self.reset_xy_data_buffers()
-        # self.reset_z_data_buffers()
 
     def reset_data_buffers(self):
         """Reset data buffers unrelated to localization.
@@ -543,6 +548,20 @@ class Frontend(QFrame):
         self._period = delay
         self._config['period'] = delay
         self._stabilizer.set_min_period(delay)
+
+    @pyqtSlot(bool)
+    def _manage_exposure_set(self, checked: bool):
+        try:
+            self._camera.set_exposure(float(self._exposure_sb.value()))
+        except Exception as e:
+            _lgr.warning("Error %s (%s) setting exposure", type(e), e)
+
+    @pyqtSlot(bool)
+    def _manage_gain_set(self, checked: bool):
+        try:
+            self._camera.set_gain(float(self._gain_sb.value()))
+        except Exception as e:
+            _lgr.warning("Error %s (%s) setting gain", type(e), e)
 
     @pyqtSlot(bool)
     def _calibrate_x(self, clicked: bool):
@@ -740,8 +759,6 @@ class Frontend(QFrame):
 
         # parameters widget
         self.paramWidget = QGroupBox("Tracking and feedback")
-        # self.paramWidget.setMinimumHeight(200)
-        # self.paramWidget.setMinimumWidth(270)
 
         # ROI buttons
         self.xyROIButton = QPushButton("xy ROI")
@@ -817,14 +834,39 @@ class Frontend(QFrame):
         self.loadZButton.clicked.connect(self._load_z_lock)
         datagb.setFlat(True)
 
-        delay_layout = QHBoxLayout()
+        numeric_gb = QGroupBox("External settings")
+        numeric_layout = QGridLayout()
+        numeric_gb.setLayout(numeric_layout)
         self.delay_le = QLineEdit(str(self._period))
         self.delay_le.setValidator(QDoubleValidator(1E-3, 1., 3))
-        self.set_delay_button = QPushButton('Set Delay')
+        self.set_delay_button = QPushButton('Set Period')
         self.set_delay_button.clicked.connect(self._set_delay)
-        delay_layout.addWidget(QLabel("Delay / s"))
-        delay_layout.addWidget(self.delay_le)
-        delay_layout.addWidget(self.set_delay_button)
+        numeric_layout.addWidget(QLabel("Period / s",
+                                        alignment=Qt.AlignRight + Qt.AlignVCenter), 0, 0)
+        numeric_layout.addWidget(self.delay_le, 0, 1)
+        numeric_layout.addWidget(self.set_delay_button, 0, 2)
+        if _has_method(self._camera, 'set_exposure'):
+            row = numeric_layout.rowCount()
+            self._exposure_sb = _create_spin(0.05, 3, 0.01, 0.01, 1.)
+            self._set_exposure_button = QPushButton('Set exposure')
+            numeric_layout.addWidget(QLabel("Exposure / s",
+                                            alignment=Qt.AlignRight + Qt.AlignVCenter), row, 0)
+            numeric_layout.addWidget(self._exposure_sb, row, 1)
+            numeric_layout.addWidget(self._set_exposure_button, row, 2)
+            self._set_exposure_button.clicked.connect(self._manage_exposure_set)
+
+        if _has_method(self._camera, 'set_gain'):
+            row = numeric_layout.rowCount()
+            self._gain_sb = _create_spin(1, 2, 0.01, 0.01, 10.)
+            self._set_gain_button = QPushButton('Set gain')
+            numeric_layout.addWidget(QLabel("Gain",
+                                            alignment=Qt.AlignRight + Qt.AlignVCenter), row, 0)
+            numeric_layout.addWidget(self._gain_sb, row, 1)
+            numeric_layout.addWidget(self._set_gain_button, row, 2)
+            self._set_gain_button.clicked.connect(self._manage_gain_set)
+
+        numeric_gb.setFlat(True)
+        numeric_gb.setMinimumSize(numeric_gb.minimumSizeHint())
 
         param_layout = QVBoxLayout()
         self.paramWidget.setLayout(param_layout)
@@ -840,8 +882,7 @@ class Frontend(QFrame):
 
         param_layout.addStretch()
 
-        param_layout.addLayout(delay_layout)
-
+        param_layout.addWidget(numeric_gb)
         self.paramWidget.setMinimumSize(self.paramWidget.sizeHint())
 
         # stats widget
@@ -923,11 +964,6 @@ class Frontend(QFrame):
         bottom_layout.addWidget(self.xyPoint)
         main_layout.addLayout(top_layout)
         main_layout.addLayout(bottom_layout)
-        # main_layout.addWidget(imageWidget, 0, 0)
-        # main_layout.addWidget(self.paramWidget, 0, 1)
-        # main_layout.addWidget(self.statWidget, 0, 2)
-        # main_layout.addWidget(self.xyzGraph, 1, 0)
-        # main_layout.addWidget(self.xyPoint, 1, 1, 1, 2)
 
     def goto_position(self, x, y, z):
         """Move to a defined position."""

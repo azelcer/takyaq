@@ -65,6 +65,8 @@ class MockCamera(BaseCamera):
     _Z_PERIOD = _np.pi*4
     _shifts = _np.zeros((3,), dtype=_np.float64)
     grid = _np.array(_np.meshgrid(_np.arange(max_x), _np.arange(max_y), indexing="ij"))
+    _exposure = 0.050
+    _gain = 1.
     # f = True  # Camera fail first call flag
 
     def __init__(self, nmpp_x, nmpp_y, nmpp_z, sigma, z_ang: float, noise_level=3,
@@ -103,13 +105,7 @@ class MockCamera(BaseCamera):
         #     if _np.random.random_sample() > 0.9:  # falla una de cada 10
         #         raise ValueError("error en camara")
         # self.f = False
-        rv = _np.random.poisson(
-            3,
-            (
-                self.max_x,
-                self.max_y,
-            ),
-        ).astype(_np.float64)
+        rv = _np.zeros((self.max_x, self.max_y,), dtype=_np.float64)
         t = _time.monotonic()
         # limit gaussian creation to +-4 sigma from center for speed
         slice_size = int(self.sigma / self._nmpp_x * 4)  # in pixels
@@ -146,6 +142,9 @@ class MockCamera(BaseCamera):
         rv[slicex, slicey] += gaussian2D(  # use X coordinate nmpp, since it maps OK
             self.grid[:, slicex, slicey], 100, r[0], r[1], self.sigma / self._nmpp_x, 0
         )
+        rv *= self._gain
+        rv += _np.random.poisson(2, (self.max_x, self.max_y))
+        rv *= (self._exposure / 0.05)  # 50ms default
         return rv.astype(_np.uint16)
 
     def shift(self, dx: float, dy: float, dz: float):
@@ -160,6 +159,16 @@ class MockCamera(BaseCamera):
                 dz,
             )
         )
+
+    def set_exposure(self, new_exp: float):
+        """Set camera exposure."""
+        _lgr.info("New exposure: %s", new_exp)
+        self._exposure = float(new_exp)
+
+    def set_gain(self, new_gain: float):
+        """Set camera gain."""
+        _lgr.info("New gain: %s", new_gain)
+        self._gain = float(new_gain)
 
 
 class MockPiezo(BasePiezo):
