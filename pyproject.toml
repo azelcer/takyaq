@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Optical piezo stage stabilization"
 authors = ["Andrés Zelcer <andres.zelcer@cibion.conicet.gov.ar>"]
 readme = "README.md"
+license = "AGPL-3.0-or-later"
 
 [tool.poetry.dependencies]
 python = "^3.9"

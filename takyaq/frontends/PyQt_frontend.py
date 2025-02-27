@@ -1,18 +1,29 @@
 """
 Sample PyQT frontend for Takyaq.
 
-Uses a mocked camera and piezo motor: replace those parts with real interfaces
-to have a fully functional stabilization program.
 
 Use:
-    - Set the parameters:
-         - nm per pixel XY
-         - nm per pixel Z
     - Create XY ROIS and move and size them to encompass the fiducial marks
     - Create a Z ROI and move and size them to encompass the beam reflection
     - Start tracking of XY and Z rois. While tracking is active, erasing or
     changing the ROIs positions has no effect.
     - Start correction of XY and Z positions.
+
+
+Copyright (C) 2025 Andrés Zelcer and others
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as
+    published by the Free Software Foundation, either version 3 of the
+    License, or (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 import numpy as _np

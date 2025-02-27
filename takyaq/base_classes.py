@@ -5,7 +5,21 @@ Abstract base classes for Takyaq.
 This module is provided to ensure that at least the method names and signatures are
 honoured. Please note that Takyaq uses nm as units in all calls.
 
-@author: azelcer
+
+Copyright (C) 2025 Andrés Zelcer and others
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as
+    published by the Free Software Foundation, either version 3 of the
+    License, or (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 from abc import ABC as _ABC, abstractclassmethod as _abstractclassmethod
 import numpy as _np
