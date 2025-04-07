@@ -82,9 +82,10 @@ class MockCamera(BaseCamera):
     _exposure = 0.050
     _gain = 1.
     # f = True  # Camera fail first call flag
+    _t_init: float = None
 
     def __init__(self, nmpp_x, nmpp_y, nmpp_z, sigma, z_ang: float, noise_level=3,
-                 drift_amplitude=3):
+                 drift_amplitude=3, request_splitted:bool = False):
         """Init Mock camera.
 
         Parameters
@@ -112,6 +113,8 @@ class MockCamera(BaseCamera):
         self._z_ang = z_ang
         self._rot_vec = _np.array((_np.cos(self._z_ang), _np.sin(self._z_ang),))
         self.sigma = sigma
+        if request_splitted:
+            self.start_image_acquisition = lambda: (setattr(self, "_t_init", _time.monotonic()))
 
     def get_image(self):
         """Return a faked image."""
@@ -120,7 +123,7 @@ class MockCamera(BaseCamera):
         #         raise ValueError("error en camara")
         # self.f = False
         rv = _np.zeros((self.max_x, self.max_y,), dtype=_np.float64)
-        t = _time.monotonic()
+        t = self._t_init if self._t_init else _time.monotonic()
         # limit gaussian creation to +-4 sigma from center for speed
         slice_size = int(self.sigma / self._nmpp_x * 4)  # in pixels
         for x0, y0 in self.centers[:-1]:

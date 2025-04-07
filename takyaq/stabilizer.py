@@ -24,7 +24,7 @@ import threading as _th
 import logging as _lgn
 import time as _time
 import os as _os
-from typing import Optional as _Optional, List as _List, Tuple as _Tuple
+from typing import Optional as _Optional, List as _List, Tuple as _Tuple, Callable as _Callable
 from concurrent.futures import ProcessPoolExecutor as _PPE
 import warnings as _warnings
 from typing import Union as _Union
@@ -160,6 +160,8 @@ class Stabilizer(_th.Thread):
     _xy_shifts: _np.ndarray = _np.full((1, 2, ), _np.nan)
     _running_thread: _th.Thread = None
 
+    _camera_start_request: _Optional[_Callable ] = None
+
     def __init__(
         self,
         camera: _bc.BaseCamera,
@@ -191,6 +193,12 @@ class Stabilizer(_th.Thread):
         if not callable(getattr(camera, "get_image", None)):
             raise ValueError(
                 "The camera object does not expose a 'get_image' method"
+            )
+
+        self._camera_start_request = getattr(camera, "start_image_acquisition", None)
+        if self._camera_start_request and not callable(self._camera_start_request):
+            raise ValueError(
+                "Camera's `start_image_acquisition` is not a valid method"
             )
         self._camera = camera
         self._nmpp_xy = camera_info.nm_ppx_xy
@@ -873,6 +881,8 @@ class Stabilizer(_th.Thread):
         initial_xy_positions = None
         self._initial_z_position = None
         self._pos[:] = self._piezo.get_position()
+        if self._camera_start_request:
+            self._camera_start_request()
         while not self._stop_event.is_set():
             lt = _time.monotonic()
             DELAY = self._period
@@ -976,5 +986,7 @@ class Stabilizer(_th.Thread):
                     self._move_relative_xy(x_resp, y_resp)
             nt = _time.monotonic()
             delay = DELAY - (nt - lt)
+            if self._camera_start_request:
+                self._camera_start_request()
             _time.sleep(max(delay, 0.001))  # be nice to other threads
         _lgr.debug("Ending loop.")
