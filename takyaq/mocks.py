@@ -162,6 +162,7 @@ class MockCamera(BaseCamera):
         rv *= self._gain
         rv += _np.random.poisson(2, (self.max_x, self.max_y))
         rv *= (self._exposure / 0.05)  # 50ms default
+        _time.sleep(max(0, self._exposure - (_time.monotonic()-t)))
         return rv.astype(_np.uint16)
 
     def shift(self, dx: float, dy: float, dz: float):
