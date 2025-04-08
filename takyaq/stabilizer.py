@@ -196,10 +196,13 @@ class Stabilizer(_th.Thread):
             )
 
         self._camera_start_request = getattr(camera, "start_image_acquisition", None)
-        if self._camera_start_request and not callable(self._camera_start_request):
-            raise ValueError(
-                "Camera's `start_image_acquisition` is not a valid method"
-            )
+        if self._camera_start_request:
+            if not callable(self._camera_start_request):
+                raise ValueError(
+                    "Camera's `start_image_acquisition` is not a valid method"
+                )
+            else:
+                _lgr.info("Using separated camera start - fetch image functions")
         self._camera = camera
         self._nmpp_xy = camera_info.nm_ppx_xy
         self._nmpp_z = camera_info.nm_ppx_z
@@ -882,7 +885,10 @@ class Stabilizer(_th.Thread):
         self._initial_z_position = None
         self._pos[:] = self._piezo.get_position()
         if self._camera_start_request:
-            self._camera_start_request()
+            try:
+                self._camera_start_request()
+            except Exception as e:
+                _lgr.error("Could not start image acquisition: %s (%s)", type(e), e)
         while not self._stop_event.is_set():
             lt = _time.monotonic()
             DELAY = self._period
@@ -987,6 +993,9 @@ class Stabilizer(_th.Thread):
             nt = _time.monotonic()
             delay = DELAY - (nt - lt)
             if self._camera_start_request:
-                self._camera_start_request()
+                try:
+                    self._camera_start_request()
+                except Exception as e:
+                    _lgr.error("Could not start image acquisition: %s (%s)", type(e), e)
             _time.sleep(max(delay, 0.001))  # be nice to other threads
         _lgr.debug("Ending loop.")
