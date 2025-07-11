@@ -284,6 +284,29 @@ class ConfigWindow(QFrame):
             )
         movement_gb.setFlat(True)
         layout.addWidget(movement_gb)
+        
+        signal_gb = QGroupBox("Signal adjustment")
+        sgnl_layout = QVBoxLayout()
+        signal_gb.setLayout(sgnl_layout)
+        self._z_bkg_le = QLineEdit(str(parent._stabilizer.z_background))
+        self._z_bkg_le.setValidator(QtGui.QDoubleValidator(0, 1E6, 1))
+        self._z_bkg_le.setToolTip(
+            """Minimum intensity to be taken into account when determining Z position.
+
+Set to the image background value to have a better Z localization."""
+            )
+        self.set_z_bkg_button = QPushButton('Set bkg')
+        self.set_z_bkg_button.clicked.connect(  # dirty
+            lambda: setattr(parent._stabilizer, 'z_background', float(self._z_bkg_le.text()))
+            )
+        z_line = QHBoxLayout()
+        z_line.addWidget(QLabel("Bkg", alignment=Qt.AlignRight + Qt.AlignVCenter))
+        z_line.addWidget(self._z_bkg_le)
+        z_line.addWidget(self.set_z_bkg_button)
+        sgnl_layout.addLayout(z_line)
+
+        movement_gb.setFlat(True)
+        layout.addWidget(signal_gb)
 
         self.setLayout(layout)
 

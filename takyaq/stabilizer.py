@@ -160,6 +160,8 @@ class Stabilizer(_th.Thread):
     _xy_shifts: _np.ndarray = _np.full((1, 2, ), _np.nan)
     _running_thread: _th.Thread = None
 
+    _z_background = 0.0
+
     def __init__(
         self,
         camera: _bc.BaseCamera,
@@ -288,6 +290,17 @@ class Stabilizer(_th.Thread):
         self._report_cb.append(report_cb)
         self._init_cb.append(init_cb)
         self._end_cb.append(end_cb)
+
+    @property
+    def z_background(self):
+        """Set minimum value to account for when locating Z center of mass."""
+        return self._z_background
+
+    @z_background.setter
+    def z_background(self, min_intensity: float):
+        """Set minimum value to account for when locating Z center of mass."""
+        _lgr.debug("New minimum background for Z localization: %s", min_intensity)
+        self._z_background = float(min_intensity)
 
     def set_min_period(self, period: float):
         """Set minimum period between position adjustments.
@@ -689,7 +702,7 @@ class Stabilizer(_th.Thread):
             return _np.full((2,), _np.nan)
         roi = image[slice(*self._z_roi[0]), slice(*self._z_roi[1])]
         roi = _np.array(roi)
-        # roi[roi < 25] = 0
+        roi[roi < self._z_background] = 0
         return _np.array(_sp.ndimage.center_of_mass(roi))
 
     def _move_relative_xy(self, dx: float, dy: float):
