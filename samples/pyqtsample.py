@@ -49,7 +49,7 @@ _lgr.setLevel(_lgn.DEBUG)
 # Constants for camera mock
 _CAMERA_XY_NMPPX = 23.5
 _CAMERA_Z_NMPPX = 10
-_CAMERA_Z_ROTATION = 3.1415 / 4
+_CAMERA_Z_ROTATION = 3.1415 * 5 / 8
 
 
 if __name__ == "__main__":
@@ -67,7 +67,8 @@ if __name__ == "__main__":
         _CAMERA_Z_ROTATION,
         1,  # Center position noise in pixels
         10,
-        1
+        1,
+        random_pos=True,
     )
     # Mock piezo motor, replace with your own
     piezo = MockPiezo(camera)

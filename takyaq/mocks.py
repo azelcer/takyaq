@@ -43,7 +43,6 @@ def gaussian2D(grid, amplitude, x0, y0, sigma, offset):
     G = offset + amplitude * _np.exp(-(a * ((x - x0) ** 2) + a * ((y - y0) ** 2)))
     return G
 
-
 class MockCamera(BaseCamera):
     """Mock camera for testing and development.
 
@@ -84,7 +83,7 @@ class MockCamera(BaseCamera):
     # f = True  # Camera fail first call flag
 
     def __init__(self, nmpp_x, nmpp_y, nmpp_z, sigma, z_ang: float, noise_level=3,
-                 drift_amplitude=3, background=1):
+                 drift_amplitude=3, background=1, /, random_pos=False):
         """Init Mock camera.
 
         Parameters
@@ -115,6 +114,13 @@ class MockCamera(BaseCamera):
         self._rot_vec = _np.array((_np.cos(self._z_ang), _np.sin(self._z_ang),))
         self.sigma = sigma
         self._pois_noise = background
+        if random_pos:
+            _np.random.seed(42)
+            self.centers = [_ for _ in zip(
+                _np.random.randint(0, self.max_x, (13,)),
+                _np.random.randint(0, self.max_y, (13,)),
+                )
+            ]
 
     def get_image(self):
         """Return a faked image."""
@@ -157,7 +163,7 @@ class MockCamera(BaseCamera):
         slicex = slice(max(cx - slice_size, 0), min(cx + slice_size, self.max_x))
         slicey = slice(max(cy - slice_size, 0), min(cy + slice_size, self.max_y))
         rv[slicex, slicey] += gaussian2D(  # use X coordinate nmpp, since it maps OK
-            self.grid[:, slicex, slicey], 100, r[0], r[1], self.sigma / self._nmpp_x, 0
+            self.grid[:, slicex, slicey], 100, r[0], r[1], self.sigma / self._nmpp_x * 1.5, 0
         )
         rv *= self._gain
         rv += _np.random.poisson(self._pois_noise, (self.max_x, self.max_y))
