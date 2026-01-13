@@ -67,23 +67,29 @@ _lgr.setLevel(_lgn.DEBUG)
 _CONFIG_FILENAME = 'takyaq.ini'
 _Z_LOCK_FILENAME = "z_lock"
 
+# default parameters
 _DEFAULT_CONFIG = {
-        'display_points': 400,
-        'save_buffer_length': 500,
-        'period': 0.05,
-        'output_base_dir': _pathlib.Path.home() / "takyaq_data",
-        'XY ROIS': {
-            'size': 60,
-        },
-        'Z ROI': {
-            'size': 100,
-        }
+    'display_points': 400,
+    'save_buffer_length': 500,
+    'period': 0.05,
+    'output_base_dir': _pathlib.Path.home() / "takyaq_data",
+    'XY ROIS': {
+        'size': 60,
+    },
+    'Z ROI': {
+        'size': 100,
+    },
+    'PI params': {
+        'Kp': [0.1, 0.1, 0.1],
+        'Ki': [0., 0., 0.],
     }
+}
+
 
 _NPY_Z_DTYPE = _np.dtype([
     ('t', _np.float64),
     ('z', _np.float64),
-    ])
+])
 
 
 def _has_method(obj, method_name: str) -> bool:
@@ -128,12 +134,13 @@ def save_config(config_data: dict, filename: str = _CONFIG_FILENAME):
     XY_dict = config_data.get('XY ROIS', {})
     config['XY ROIS'] = {
         'size': XY_dict.get('size', 60),
-        }
+    }
     # TODO: guardar posicion ROI Z
     Z_dict = config_data.get('Z ROI', {})
     config['Z ROI'] = {
         'size': Z_dict.get('size', 100),
-        }
+    }
+    config['PI params'] = config_data["PI params"]
     with open(filename, "wt") as configfile:
         config.write(configfile)
 
@@ -160,6 +167,12 @@ def load_config(filename: str = _CONFIG_FILENAME):
         z_cfg = config['Z ROI']
         for k in ('size',):
             rv['Z ROI'][k] = z_cfg.getint(k)
+    if 'PI params' in config:
+        for k in ('Kp', 'Ki'):
+            rv['PI params'][k] = [
+                float(v) for v in
+                config.get('PI params', k).removeprefix("[").removesuffix("]").split(',')
+            ]
     return rv
 
 
@@ -208,13 +221,19 @@ def load_z_lock(filename: str) -> _Tuple[float, float, ROI]:
 
 
 class ConfigWindow(QFrame):
-    def __init__(self, parent, controller: _bc.BaseController, *args, **kwargs):
+    def __init__(self, parent, controller: _bc.BaseController, PID_values: dict = None, *args, **kwargs):
         # TODO: accept a loaded config parameter
         super().__init__(*args, **kwargs)
         self._controller = controller
         self.setWindowFlag(Qt.WindowCloseButtonHint, False)
         self._init_gui(parent)
-        self._PID_changed(0.0)
+        if PID_values:
+            if 'Kp' in PID_values:
+                for val, spbx in zip(PID_values['Kp'], self._KP_sp):
+                    spbx.setValue(val)
+            if 'Ki' in PID_values:
+                for val, spbx in zip(PID_values['Ki'], self._KI_sp):
+                    spbx.setValue(val)
 
     def _init_gui(self, parent):
         self.setWindowTitle("Takyaq configuration")
@@ -289,12 +308,16 @@ class ConfigWindow(QFrame):
 
     @pyqtSlot(float)
     def _PID_changed(self, newvalue: float):
-        Kp = [sp.value() for sp in self._KP_sp]
-        Ki = [sp.value() for sp in self._KI_sp]
-        # Kd = [sp.value() for sp in self._KD_sp]
+        Kp = self.get_Kps()
+        Ki = self.get_Kis()
         self._controller.set_Kp(Kp)
         self._controller.set_Ki(Ki)
-        # self._controller.set_Kd(Kd)
+
+    def get_Kps(self) -> _Tuple[float]:
+        return tuple(sp.value() for sp in self._KP_sp)
+
+    def get_Kis(self) -> _Tuple[float]:
+        return tuple(sp.value() for sp in self._KI_sp)
 
 
 class Frontend(QFrame):
@@ -342,7 +365,7 @@ class Frontend(QFrame):
                  **kwargs):
         """Init Frontend."""
         super().__init__(*args, **kwargs)
-        if publication_colors:
+        if publication_colors:  # Color changes for publication
             _pg.setConfigOption('background', 'w')
             _pg.setConfigOption('foreground', 'k')
         self._scaling = line_scaling
@@ -362,11 +385,12 @@ class Frontend(QFrame):
         self._stabilizer.add_callbacks(self._cbojt.cb, None, None)
         self._t0 = _time.time()
         self._set_delay(True)
-        self._config_window = ConfigWindow(self, controller)
+        self._config_window = ConfigWindow(self, controller, PID_values=self._config["PI params"])
         self._config_window.hide()
         self._pattern_window = PatternWindow(self, stabilizer)
         self._pattern_window.hide()
         self._pen_XY_ROI = _pg.mkPen(color="w", width=self._scaling)
+        # Hi-res screen capture functionality
         self._capture_shortcut = QShortcut(QtGui.QKeySequence("Ctrl+S"), self)
         self._capture_shortcut.activated.connect(self._save_screen)
 
@@ -1056,6 +1080,11 @@ class Frontend(QFrame):
             self.toggle_pattern_button.setText("Show pattern window")
             self._pattern_window.hide()
 
+    def _update_config_data(self):
+        """Update internal config data with values in use."""
+        self._config['PI params']['Kp'] = list(self._config_window.get_Kps())
+        self._config['PI params']['Ki'] = list(self._config_window.get_Kis())
+
     def closeEvent(self, *args, **kwargs):
         """Shut down stabilizer on exit."""
         _lgr.debug("Closing stabilization window")
@@ -1063,4 +1092,6 @@ class Frontend(QFrame):
             self._change_save(Qt.CheckState.Unchecked)
         self._config_window.close()
         self._pattern_window.close()
+        self._update_config_data()
+        save_config(self._config)
         super().closeEvent(*args, **kwargs)
