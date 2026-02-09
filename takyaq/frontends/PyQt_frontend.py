@@ -655,8 +655,7 @@ class Frontend(QFrame):
                 self._z_fd = None
                 self._save_data = False
         else:
-            base_dir = _pathlib.Path.home() / "takyaq_data"
-            base_dir = self._config['output_base_dir']
+            base_dir = _pathlib.Path(self._config['output_base_dir'])
             base_dir.mkdir(parents=True, exist_ok=True)
             date_str = _datetime.datetime.now().isoformat(
                 timespec='seconds').replace('-', '').replace(':', '-')
