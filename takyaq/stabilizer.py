@@ -245,6 +245,7 @@ class Stabilizer(_th.Thread):
         self._max_displacement = _np.zeros((3,))
         self.set_max_displacement(max_displacement)
         self._initial_z_position = None
+        self._n_track_only_rois = 0
 
     def __enter__(self):
         self.start_loop()
@@ -312,7 +313,7 @@ class Stabilizer(_th.Thread):
         self._period = period
         _lgr.debug("New period set: %s", period)
 
-    def set_xy_rois(self, rois: _List[ROI]) -> bool:
+    def set_xy_rois(self, rois: _List[ROI], n_track_only_rois: int = 0) -> bool:
         """Set ROIs for xy stabilization.
 
         Can not be used while XY tracking is active.
@@ -321,6 +322,8 @@ class Stabilizer(_th.Thread):
         ----------
         rois: list[info_types.ROI]
             list of XY rois (in pixels)
+        n_track_only_rois: int DEFAULT 0
+            number of track-only rois at the end of the list.
 
         Return
         ------
@@ -334,6 +337,7 @@ class Stabilizer(_th.Thread):
             [[[_.min_x, _.max_x], [_.min_y, _.max_y]] for _ in rois],
             dtype=_np.uint16,  # int type to use as indexes
         )
+        self._n_track_only_rois = n_track_only_rois
         return True
 
     def set_z_roi(self, roi: ROI) -> bool:
@@ -463,7 +467,7 @@ class Stabilizer(_th.Thread):
             self._report_end_stabilization(StabilizationType.XY_stabilization,
                                            idx + 1)
             return False
-        self._rsp.reset_xy(len(self._xy_rois))
+        self._rsp.reset_xy(len(self._xy_rois) - self._n_track_only_rois)
         self._xy_stabilization = True
         return True
 
@@ -773,7 +777,7 @@ class Stabilizer(_th.Thread):
                 self._report(
                     _time.time(), image, xy_shifts - initial_xy_positions, 0
                 )
-                x = _np.nanmean(xy_shifts[:, c_idx])
+                x = _np.nanmean(xy_shifts[:, c_idx][: -self._n_track_only_rois or None])
                 response[idx] = x / self._nmpp_xy
                 self._move_relative_xy(*rel_vec)
                 _time.sleep(0.10)
@@ -957,7 +961,7 @@ class Stabilizer(_th.Thread):
                     z_shift = 0.0
                 try:
                     x_resp, y_resp, z_resp = self._rsp.response(
-                        t, xy_shifts, z_shift
+                        t, xy_shifts[: -self._n_track_only_rois or None], z_shift
                     )
                 except Exception as e:
                     _lgr.warning("Error getting correction: %s, %s", e, type(e))

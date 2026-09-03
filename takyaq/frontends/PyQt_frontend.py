@@ -306,6 +306,7 @@ class Frontend(QFrame):
     _t_data = _np.full((0,), _np.nan)
     _z_data = _np.full((0,), _np.nan)
     _xy_data = _np.full((0, 0, 2), _np.nan)
+    _track_only_xy_data = _np.full((0, 0, 2), _np.nan)
     _graph_pos = 0
 
     # For saving
@@ -316,14 +317,17 @@ class Frontend(QFrame):
     _save_data: bool = False
     _SAVE_PERIOD = 0.05
     _xy_fd: _BinaryIO = None
+    _track_only_xy_fd: _BinaryIO = None
     _z_fd: _BinaryIO = None
     _t_save_data = _np.full((0,), _np.nan)
     _z_save_data = _np.full((0,), _np.nan)
     _xy_save_data = _np.full((0, 0, 2), _np.nan)
+    _track_only_xy_save_data = _np.full((0, 0, 2), _np.nan)
 
     _x_plots = []
     _y_plots = []
     _roilist = []
+    _track_only_roilist = []
     _z_ROI = None
     lastimage: _np.ndarray = None
     _z_tracking_enabled: bool = False
@@ -356,7 +360,8 @@ class Frontend(QFrame):
         self._cbojt = QReader()
         self._cbojt.new_data.connect(self.get_data)
         self.reset_data_buffers()
-        self.reset_xy_data_buffers(len(self._roilist))
+        self.reset_xy_data_buffers(len(self._roilist) + len(self._track_only_roilist))
+        self._last_n_to_rois = 0
         self.reset_z_data_buffers()
         self._stabilizer = stabilizer
         self._stabilizer.add_callbacks(self._cbojt.cb, None, None)
@@ -367,6 +372,7 @@ class Frontend(QFrame):
         self._pattern_window = PatternWindow(self, stabilizer)
         self._pattern_window.hide()
         self._pen_XY_ROI = _pg.mkPen(color="w", width=self._scaling)
+        self._pen_track_only_XY_ROI = _pg.mkPen(color="g", width=self._scaling * 2)
         self._capture_shortcut = QShortcut(QtGui.QKeySequence("Ctrl+S"), self)
         self._capture_shortcut.activated.connect(self._save_screen)
 
@@ -455,6 +461,21 @@ class Frontend(QFrame):
         self.delete_roiButton.setEnabled(True)
 
     @pyqtSlot(bool)
+    def _add_track_only_xy_ROI(self, checked: bool):
+        """Add a new track-only XY ROI."""
+        if self.lastimage is None:
+            _lgr.warning("No image to set ROI")
+            return
+        w, h = self.lastimage.shape[0:2]
+        ROIpos = (w / 2 - self._XY_ROI_SIZE / 2, h / 2 - self._XY_ROI_SIZE / 2)
+        ROIsize = (self._XY_ROI_SIZE, self._XY_ROI_SIZE)
+        roi = _pg.ROI(ROIpos, ROIsize, rotatable=False, pen=self._pen_track_only_XY_ROI)
+        roi.addScaleHandle((1, 0), (0, 1), lockAspect=True)
+        self.image_pi.addItem(roi)
+        self._track_only_roilist.append(roi)
+        self.delete_track_only_roiButton.setEnabled(True)
+
+    @pyqtSlot(bool)
     def _remove_xy_ROI(self, checked: bool):
         """Remove last XY ROI."""
         if not self._roilist:
@@ -465,6 +486,18 @@ class Frontend(QFrame):
         del roi
         if not self._roilist:
             self.delete_roiButton.setEnabled(False)
+
+    @pyqtSlot(bool)
+    def _remove_track_only_xy_ROI(self, checked: bool):
+        """Remove last track-only XY ROI."""
+        if not self._track_only_roilist:
+            _lgr.warning("No track-only ROI to delete")
+            return
+        roi = self._track_only_roilist.pop()
+        self.image_pi.removeItem(roi)
+        del roi
+        if not self._track_only_roilist:
+            self.delete_track_only_roiButton.setEnabled(False)
 
     @pyqtSlot(bool)
     def _add_z_ROI(self, checked: bool):
@@ -541,15 +574,20 @@ class Frontend(QFrame):
             if self._xy_tracking_enabled:
                 _lgr.warning("XY tracking was already enabled")
                 return
+            full_length = len(self._roilist) + len(self._track_only_roilist)
+            self._last_n_to_rois = len(self._track_only_roilist)
             self._npy_xy_dtype = _np.dtype([
                 ('t', _np.float64),
-                ('xy', _np.float64, (len(self._roilist), 2)),
+                ('xy', _np.float64, (full_length, 2)),
                 ])
-            self.reset_graphs(len(self._roilist))
-            self.reset_xy_data_buffers(len(self._roilist))
+            self.reset_graphs(full_length)
+            self.reset_xy_data_buffers(full_length)
             if not self._z_tracking_enabled:
                 self.reset_data_buffers()
-            self._stabilizer.set_xy_rois([ROI.from_pyqtgraph(roi) for roi in self._roilist])
+            self._stabilizer.set_xy_rois(
+                [ROI.from_pyqtgraph(roi) for roi in (self._roilist + self._track_only_roilist)],
+                len(self._track_only_roilist),
+            )
             self._stabilizer.set_xy_tracking(True)
             self._xy_tracking_enabled = True
 
@@ -754,20 +792,21 @@ class Frontend(QFrame):
 
         if self._xy_tracking_enabled and xy_shifts.shape[0]:
             self._xy_save_data[self._save_pos] = self._xy_data[self._graph_pos] = xy_shifts
-            t_data = _np.copy(t_data)  # pyqtgraph does not keep a cpoy
+            t_data = _np.copy(t_data)  # pyqtgraph does not keep a copy
 
             x_data = self._xy_data[: self._graph_pos + 1, :, 0]
             y_data = self._xy_data[: self._graph_pos + 1, :, 1]
             # update reports
+            TO_start = -self._last_n_to_rois or None
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                x_mean = _np.nanmean(x_data, axis=1)
-                y_mean = _np.nanmean(y_data, axis=1)
+                x_mean = _np.nanmean(x_data[:, :TO_start], axis=1)
+                y_mean = _np.nanmean(y_data[:, :TO_start], axis=1)
                 self.xstd_value.setText(
-                    f"{_np.nanstd(x_mean):.2f} - {_np.nanmean(_np.nanstd(x_data, axis=0)):.2f}"
+                    f"{_np.nanstd(x_mean):.2f} - {_np.nanmean(_np.nanstd(x_data[:, :TO_start], axis=0)):.2f}"
                 )
                 self.ystd_value.setText(
-                    f"{_np.nanstd(y_mean):.2f} - {_np.nanmean(_np.nanstd(y_data, axis=0)):.2f}"
+                    f"{_np.nanstd(y_mean):.2f} - {_np.nanmean(_np.nanstd(y_data[:, :TO_start], axis=0)):.2f}"
                 )
             # update Graphs
             for i, p in enumerate(self._x_plots):
@@ -823,12 +862,18 @@ class Frontend(QFrame):
         # ROI buttons
         self.xyROIButton = QPushButton("xy ROI")
         self.xyROIButton.clicked.connect(self._add_xy_ROI)
+        self.xyROIButton.setEnabled(True)
         self.zROIButton = QPushButton("z ROI")
         self.zROIButton.setEnabled(True)
         self.zROIButton.clicked.connect(self._add_z_ROI)
+        self.track_only_xyROIButton = QPushButton("TO xy ROI")
+        self.track_only_xyROIButton.clicked.connect(self._add_track_only_xy_ROI)
         self.delete_roiButton = QPushButton("Delete last xy ROI")
         self.delete_roiButton.clicked.connect(self._remove_xy_ROI)
         self.delete_roiButton.setEnabled(False)
+        self.delete_track_only_roiButton = QPushButton("Delete last TO xy ROI")
+        self.delete_track_only_roiButton.clicked.connect(self._remove_track_only_xy_ROI)
+        self.delete_track_only_roiButton.setEnabled(False)
         self.toggle_options_button = QPushButton("Show Options Window")
         self.toggle_options_button.clicked.connect(self._toggle_options_window)
         self.toggle_options_button.setEnabled(True)
@@ -937,7 +982,9 @@ class Frontend(QFrame):
 
         param_layout.addWidget(self.xyROIButton)
         param_layout.addWidget(self.zROIButton)
+        param_layout.addWidget(self.track_only_xyROIButton)
         param_layout.addWidget(self.delete_roiButton)
+        param_layout.addWidget(self.delete_track_only_roiButton)
         param_layout.addWidget(self.toggle_options_button)
         param_layout.addWidget(self.toggle_pattern_button)
 
