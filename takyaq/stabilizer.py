@@ -954,14 +954,17 @@ class Stabilizer(_th.Thread):
                 self._xy_shifts = xy_shifts
             self._report(t, image, xy_shifts, z_shift)
             if xy_shifts is not None:
-                xy_shifts = xy_shifts + self._reference_shift[0:2]
+                xy_shifts = (  # trim track-only and apply shift
+                    xy_shifts[: -self._n_track_only_rois or None] +
+                    self._reference_shift[0:2]
+                )
             if self._z_stabilization or self._xy_stabilization:
                 if z_shift is _np.nan:
                     _lgr.warning("z shift is NAN")
                     z_shift = 0.0
                 try:
                     x_resp, y_resp, z_resp = self._rsp.response(
-                        t, xy_shifts[: -self._n_track_only_rois or None], z_shift
+                        t, xy_shifts, z_shift
                     )
                 except Exception as e:
                     _lgr.warning("Error getting correction: %s, %s", e, type(e))
